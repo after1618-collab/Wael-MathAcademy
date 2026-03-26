@@ -79,7 +79,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (token != null) {
       final isValid = await ApiService.validateSession();
-      if (isValid && mounted) {
+      if (isValid == true && mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const StudentDashboard()),
         );

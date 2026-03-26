@@ -16,13 +16,22 @@ from passlib.context import CryptContext
 # -----------------------------
 # تحميل المتغيرات من .env
 # -----------------------------
-load_dotenv()
+script_dir = os.path.dirname(os.path.abspath(__file__))
+dotenv_path = os.path.join(script_dir, ".env")
+
+# ✅ إذا كان الملف مسمى 'env' بدون نقطة، سنقوم بالتحقق منه واستخدامه
+if not os.path.exists(dotenv_path) and os.path.exists(os.path.join(script_dir, "env")):
+    dotenv_path = os.path.join(script_dir, "env")
+
+env_loaded = load_dotenv(dotenv_path)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY") # ⚠️ إضافة مفتاح أمان للمعلم
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    raise RuntimeError("❌ SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in the .env file")
+    error_msg = f"❌ Environment variables missing.\nChecked file: {dotenv_path}\nFile Found: {env_loaded}"
+    if not env_loaded: error_msg += "\n\n⚠️ Ensure the '.env' file exists in the project root folder."
+    raise RuntimeError(error_msg)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 

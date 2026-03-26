@@ -87,7 +87,11 @@ class ApiService {
     }
   }
 
-  static Future<bool> validateSession() async {
+  /// Returns:
+  ///   - true  → session is valid
+  ///   - false → server explicitly says session is invalid/expired (force logout)
+  ///   - null  → network/timeout error (do NOT logout, keep session locally)
+  static Future<bool?> validateSession() async {
     try {
       final token = SessionManager().token;
       if (token == null) return false;
@@ -97,10 +101,18 @@ class ApiService {
         headers: _headers(),
       ).timeout(_timeout);
 
-      final body = jsonDecode(response.body);
-      return body['valid'] == true;
-    } catch (_) {
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        return body['valid'] == true;
+      }
+      // Server responded with error (4xx/5xx) → treat as invalid
       return false;
+    } on SocketException {
+      return null; // No internet → do NOT logout
+    } on TimeoutException {
+      return null; // Server slow → do NOT logout
+    } catch (_) {
+      return null; // Unknown error → be safe, do NOT logout
     }
   }
 

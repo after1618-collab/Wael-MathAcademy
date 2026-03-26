@@ -26,19 +26,19 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   void _startSessionPolling() {
     _sessionPollingTimer =
-        Timer.periodic(const Duration(minutes: 3), (timer) async {
-      try {
-        final isValid = await ApiService.validateSession();
-        if (mounted && !isValid) {
-          timer.cancel();
-          await SessionManager().clear();
-          Navigator.of(context)
-              .pushNamedAndRemoveUntil('/login', (route) => false);
-        }
-      } catch (e) {
+        Timer.periodic(const Duration(seconds: 30), (timer) async {
+      // validateSession returns:
+      //   true  → session valid, do nothing
+      //   false → server says invalid (logout immediately)
+      //   null  → network error (keep session, try again next tick)
+      final isValid = await ApiService.validateSession();
+      if (isValid == false && mounted) {
         timer.cancel();
-        debugPrint("Error polling session status: $e");
+        await SessionManager().clear();
+        Navigator.of(context)
+            .pushNamedAndRemoveUntil('/login', (route) => false);
       }
+      // if null → silently ignore, session stays active
     });
   }
 
