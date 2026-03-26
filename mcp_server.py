@@ -39,13 +39,14 @@ app = FastAPI(title="WAEL MCP Backend", version="1.0", description="Server for m
 # Enable CORS (Cross-Origin Resource Sharing)
 app.add_middleware(
     CORSMiddleware,
-    # ✅ السماح بالوصول من جميع المصادر. هذا مناسب للتطوير المحلي.
-    # ⚠️ في بيئة الإنتاج، يجب تقييد هذا إلى نطاق التطبيق الفعلي الخاص بك.
-    # مثال: allow_origins=["https://your-app-domain.com"]
-    allow_origins=["*"], # يُفضل تغيير النجمة إلى رابط موقع الطالب عند الرفع
+    allow_origins=[
+        "https://wael-mathacademy.up.railway.app",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # -----------------------------
