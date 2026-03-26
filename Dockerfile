@@ -9,5 +9,4 @@ COPY . .
 
 EXPOSE 8000
 
-# force rebuild 03/26/2026 21:52:10
 CMD ["uvicorn", "mcp_server:app", "--host", "0.0.0.0", "--port", "8000"]
