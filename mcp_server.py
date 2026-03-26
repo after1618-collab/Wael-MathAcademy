@@ -5,6 +5,8 @@ import hashlib
 import time
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Depends, Header, Security
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
@@ -1088,6 +1090,11 @@ def admin_watch_report(_: bool = Depends(get_admin_access)):
         return {"report": result.data or []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed: {e}")
+
+# -----------------------------
+# Static Files (Web Build)
+# -----------------------------
+app.mount("/", StaticFiles(directory="build/web", html=True), name="static")
 
 # -----------------------------
 # Run (للتجربة المحلية فقط)
