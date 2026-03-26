@@ -3,7 +3,12 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - main  # سيتم التحديث التلقائي كلما رفعت كود لهذا الفرع
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -21,7 +26,7 @@ jobs:
       - name: Build Web
         run: flutter build web --release --base-href "/Wael-MathAcademy/"
 
-      - name: Upload production-ready build artifacts
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v2
         with:
           path: build/web
@@ -29,9 +34,6 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
