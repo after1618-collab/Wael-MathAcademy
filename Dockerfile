@@ -7,6 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
-
-CMD uvicorn mcp_server:app --host 0.0.0.0 --port $PORT
+CMD ["sh", "-c", "uvicorn mcp_server:app --host 0.0.0.0 --port $PORT"]
