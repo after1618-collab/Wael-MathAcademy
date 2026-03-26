@@ -1,0 +1,529 @@
+﻿# mcp_server.py
+import os
+import uuid
+from datetime import datetime, timezone
+from fastapi import FastAPI, HTTPException, Depends, Header, Security
+from pydantic import BaseModel, EmailStr
+from fastapi.middleware.cors import CORSMiddleware
+from supabase import create_client, Client
+from dotenv import load_dotenv
+from passlib.context import CryptContext
+
+# -----------------------------
+# طھط­ظ…ظٹظ„ ط§ظ„ظ…طھط؛ظٹط±ط§طھ ظ…ظ† .env
+# -----------------------------
+load_dotenv()
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY") # âڑ ï¸ڈ ط¥ط¶ط§ظپط© ظ…ظپطھط§ط­ ط£ظ…ط§ظ† ظ„ظ„ظ…ط¹ظ„ظ…
+
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    raise RuntimeError("â‌Œ SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in the .env file")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+# --- Security (Hashing) ---
+# ط¥ط¹ط¯ط§ط¯ ط³ظٹط§ظ‚ ط§ظ„طھط´ظپظٹط± ط¨ط§ط³طھط®ط¯ط§ظ… bcrypt
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+# -----------------------------
+# FastAPI app
+# -----------------------------
+app = FastAPI(title="WAEL MCP Backend", version="1.0", description="Server for managing student sessions.")
+
+# Enable CORS (Cross-Origin Resource Sharing)
+app.add_middleware(
+    CORSMiddleware,
+    # âœ… ط§ظ„ط³ظ…ط§ط­ ط¨ط§ظ„ظˆطµظˆظ„ ظ…ظ† ط¬ظ…ظٹط¹ ط§ظ„ظ…طµط§ط¯ط±. ظ‡ط°ط§ ظ…ظ†ط§ط³ط¨ ظ„ظ„طھط·ظˆظٹط± ط§ظ„ظ…ط­ظ„ظٹ.
+    # âڑ ï¸ڈ ظپظٹ ط¨ظٹط¦ط© ط§ظ„ط¥ظ†طھط§ط¬طŒ ظٹط¬ط¨ طھظ‚ظٹظٹط¯ ظ‡ط°ط§ ط¥ظ„ظ‰ ظ†ط·ط§ظ‚ ط§ظ„طھط·ط¨ظٹظ‚ ط§ظ„ظپط¹ظ„ظٹ ط§ظ„ط®ط§طµ ط¨ظƒ.
+    # ظ…ط«ط§ظ„: allow_origins=["https://your-app-domain.com"]
+    allow_origins=["*"], # ظٹظڈظپط¶ظ„ طھط؛ظٹظٹط± ط§ظ„ظ†ط¬ظ…ط© ط¥ظ„ظ‰ ط±ط§ط¨ط· ظ…ظˆظ‚ط¹ ط§ظ„ط·ط§ظ„ط¨ ط¹ظ†ط¯ ط§ظ„ط±ظپط¹
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# -----------------------------
+# ظ†ظ…ط§ط°ط¬ ط§ظ„ط¨ظٹط§ظ†ط§طھ (Models)
+# -----------------------------
+class SessionLogin(BaseModel):
+    email: EmailStr  # Using EmailStr for validation
+    password: str    # âڑ ï¸ڈ ط¥ط¶ط§ظپط© ط­ظ‚ظ„ ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±
+    device_id: str
+
+class SessionLogout(BaseModel):
+    session_token: str
+
+class SetPasswordRequest(BaseModel):
+    student_id: str
+    new_password: str
+
+class Hash:
+    def bcrypt(password: str):
+        return pwd_context.hash(password)
+    def verify(hashed_password: str, plain_password: str):
+        return pwd_context.verify(plain_password, hashed_password)
+
+class SubmitAnswerRequest(BaseModel):
+    question_id: str
+    submitted_answer: str
+    revealed: bool = False
+
+class SessionRequest(BaseModel):
+    student_id: str
+    device_id: str
+
+class StudentData(BaseModel):
+    full_name: str
+    email: str
+    class_name: str = None
+
+# -----------------------------
+# Dependency for protected routes
+# -----------------------------
+# âڑ ï¸ڈ ظ‡ط§ظ… ط¬ط¯ط§ظ‹ ظ„ظ„ط£ط¯ط§ط،: طھظ… طھط؛ظٹظٹط± async def ط¥ظ„ظ‰ def
+# ظ…ظƒطھط¨ط© supabase-py ظ…طھط²ط§ظ…ظ†ط© (blocking)طŒ ط§ط³طھط®ط¯ط§ظ… async ظ‡ظ†ط§ ظٹط³ط¨ط¨ طھط¬ظ…ظٹط¯ ط§ظ„ط®ط§ط¯ظ… ظ…ط¹ ط¹ط¯ط¯ ط§ظ„ط·ظ„ط§ط¨ ط§ظ„ظƒط¨ظٹط±
+def get_current_student(authorization: str = Header(..., description="Student's active session token as 'Bearer <token>'")):
+    """
+    Dependency that checks for a valid session token in the request header.
+    If valid, it returns the student_id. Otherwise, it raises an HTTPException.
+    """
+    try:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Invalid authorization scheme. Use 'Bearer <token>'.")
+        
+        token = authorization.split(" ")[1]
+
+        res = supabase.table("sessions").select("student_id").eq("session_token", token).eq("active", True).limit(1).execute()
+        if not res.data:
+            raise HTTPException(status_code=401, detail="Invalid or expired session token")
+        return res.data[0]["student_id"]
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Session validation error: {e}")
+
+def get_admin_access(x_api_key: str = Header(..., description="Admin's secret API key.")):
+    """
+    Dependency that checks for a valid admin API key in the request header.
+    This is a simple way to protect teacher/admin-only endpoints.
+    """
+    if not ADMIN_API_KEY:
+        raise HTTPException(status_code=500, detail="Admin API key is not configured on the server.")
+    if x_api_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid Admin API Key.")
+
+
+# -----------------------------
+# Endpoints
+# -----------------------------
+
+# --- Session Management ---
+@app.post("/sessions/login", summary="Student login and session creation")
+def login_and_create_session(data: SessionLogin):
+    """
+    - ظٹطھط­ظ‚ظ‚ ظ…ظ† ظˆط¬ظˆط¯ ط§ظ„ط·ط§ظ„ط¨ ظˆط­ط§ظ„طھظ‡ (ظ…ظپط¹ظ‘ظ„).
+    - ظٹظ„ط؛ظٹ ط£ظٹ ط¬ظ„ط³ط§طھ ظ‚ط¯ظٹظ…ط© ظ†ط´ط·ط© ظ„ظ†ظپط³ ط§ظ„ط·ط§ظ„ط¨.
+    - ظٹظ†ط´ط¦ ط¬ظ„ط³ط© ط¬ط¯ظٹط¯ط© ظˆظٹط¹ظٹط¯ ط§ظ„ظ€ token.
+    """
+    try:
+        # 1. ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط£ظ† ط§ظ„ط·ط§ظ„ط¨ ظ…ظˆط¬ظˆط¯ ظˆظ…ظپط¹ظ‘ظ„
+        student_res = supabase.table("students").select("id, activated, hashed_password").eq("email", data.email).limit(1).execute()
+        if not student_res.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student = student_res.data[0]
+        if not student["activated"]:
+            raise HTTPException(status_code=403, detail="Student account is not activated")
+        
+        # âڑ ï¸ڈ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±
+        if not student.get("hashed_password"):
+            raise HTTPException(status_code=400, detail="A password has not been set for this account")
+        
+        if not Hash.verify(student["hashed_password"], data.password[:72]):
+            raise HTTPException(status_code=401, detail="Incorrect password")
+
+        student_id = student["id"]
+
+        # 2. ط¥ظ„ط؛ط§ط، ط£ظٹ ط¬ظ„ط³ط§طھ ظ‚ط¯ظٹظ…ط© ظ†ط´ط·ط© ظ„ظ„ط·ط§ظ„ط¨
+        supabase.table("sessions").update({"active": False}).eq("student_id", student_id).eq("active", True).execute()
+
+        # 3. ط¥ظ†ط´ط§ط، ط¬ظ„ط³ط© ط¬ط¯ظٹط¯ط©
+        session_token = str(uuid.uuid4())
+        new_session = {
+            "student_id": student_id,
+            "device_id": data.device_id,
+            "session_token": session_token,
+            "active": True,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        supabase.table("sessions").insert(new_session).execute()
+        
+        return {"status": "success", "session_token": session_token, "student_id": student_id}
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"Error during login: {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+@app.get("/sessions/validate/{session_token}", summary="Validate session token")
+def validate_session(session_token: str):
+    """
+    ظٹطھط­ظ‚ظ‚ ظ…ظ…ط§ ط¥ط°ط§ ظƒط§ظ† ط§ظ„ظ€ token ظ„ط¬ظ„ط³ط© ظ†ط´ط·ط©.
+    ظٹط¹ظٹط¯ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط¬ظ„ط³ط© ط¥ط°ط§ ظƒط§ظ†طھ طµط§ظ„ط­ط©.
+    """
+    try:
+        result = supabase.table("sessions").select("*, students(full_name, email)").eq("session_token", session_token).eq("active", True).limit(1).execute()
+        if not result.data:
+            return {"valid": False, "detail": "Invalid or expired session"}
+        return {"valid": True, "session": result.data[0]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="An error occurred while validating the session.")
+
+@app.post("/sessions/logout", summary="Student logout")
+def logout_session(data: SessionLogout):
+    """
+    ط¥ظ†ظ‡ط§ط، ط¬ظ„ط³ط© ط§ظ„ط·ط§ظ„ط¨ ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط§ظ„ظ€ token.
+    """
+    try:
+        result = supabase.table("sessions").select("id").eq("session_token", data.session_token).eq("active", True).execute()
+        if not result.data:
+            return {"status": "not_found", "detail": "Session not found or already ended."}
+
+        supabase.table("sessions").update({"active": False}).eq("session_token", data.session_token).execute()
+        return {"status": "logged_out"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="An error occurred during logout.")
+
+@app.get("/sessions/active", summary="(Admin) List all active sessions")
+def list_active_sessions(_: bool = Depends(get_admin_access)):
+    """
+    ظٹط¹ط±ط¶ ظ‚ط§ط¦ظ…ط© ط¨ظƒظ„ ط§ظ„ط¬ظ„ط³ط§طھ ط§ظ„ظ†ط´ط·ط© ط­ط§ظ„ظٹط§ظ‹ ظ…ط¹ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط·ظ„ط§ط¨ ط§ظ„ظ…ط±طھط¨ط·ظٹظ† ط¨ظ‡ط§.
+    """
+    try:
+        result = supabase.table("sessions").select("*, students(full_name, email)").eq("active", True).execute()
+        return {"active_sessions": result.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to retrieve active sessions.")
+
+@app.post("/sessions/force_end/{session_token}", summary="(Admin) Force end a student session")
+def force_end_session(session_token: str, _: bool = Depends(get_admin_access)):
+    """
+    ظٹط³ظ…ط­ ظ„ظ„ظ…ط¹ظ„ظ… ط¨ط¥ظ†ظ‡ط§ط، ط¬ظ„ط³ط© ط·ط§ظ„ط¨ ظ…ط­ط¯ط¯ط© ط¨ط§ظ„ظ‚ظˆط©.
+    """
+    try:
+        result = supabase.table("sessions").select("id").eq("session_token", session_token).eq("active", True).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Active session with this token not found.")
+
+        supabase.table("sessions").update({"active": False}).eq("session_token", session_token).execute()
+        return {"status": "force_ended"}
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+# âڑ ï¸ڈ طھظ… ط­ط°ظپ ظ†ظ‚ط§ط· ط§ظ„ظ†ظ‡ط§ظٹط© ط§ظ„ظ…ظƒط±ط±ط© ظˆط§ظ„ظ‚ط¯ظٹظ…ط© /start_session ظˆ /end_session
+
+@app.post("/admin/set-password", summary="(Admin) Set a student's password")
+def set_student_password(req: SetPasswordRequest, _: bool = Depends(get_admin_access)):
+    """
+    ظٹط³ظ…ط­ ظ„ظ„ظ…ط¹ظ„ظ… ط¨طھط¹ظٹظٹظ† ط£ظˆ طھط­ط¯ظٹط« ظƒظ„ظ…ط© ظ…ط±ظˆط± ط·ط§ظ„ط¨.
+    """
+    try:
+        hashed_pw = Hash.bcrypt(req.new_password[:72])
+        supabase.table("students").update({"hashed_password": hashed_pw}).eq("id", req.student_id).execute()
+        return {"status": "success", "detail": "Password updated successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to set password: {e}")
+
+# --- Student Management (Admin) ---
+
+@app.get("/admin/students", summary="(Admin) Get all students")
+def get_all_students(_: bool = Depends(get_admin_access)):
+    try:
+        res = supabase.table("students").select("*").order("created_at").execute()
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch students: {e}")
+
+@app.post("/admin/students", summary="(Admin) Add a new student")
+def add_student(student: StudentData, _: bool = Depends(get_admin_access)):
+    try:
+        new_student = {
+            "full_name": student.full_name,
+            "email": student.email,
+            "class_name": student.class_name,
+            "activated": True # Default to activated
+        }
+        res = supabase.table("students").insert(new_student).execute()
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add student: {e}")
+
+@app.put("/admin/students/{student_id}", summary="(Admin) Update student")
+def update_student(student_id: str, student: StudentData, _: bool = Depends(get_admin_access)):
+    try:
+        updates = {
+            "full_name": student.full_name,
+            "email": student.email,
+            "class_name": student.class_name
+        }
+        # Remove None values
+        updates = {k: v for k, v in updates.items() if v is not None}
+        
+        res = supabase.table("students").update(updates).eq("id", student_id).execute()
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update student: {e}")
+
+@app.delete("/admin/students/{student_id}", summary="(Admin) Delete student")
+def delete_student(student_id: str, _: bool = Depends(get_admin_access)):
+    try:
+        res = supabase.table("students").delete().eq("id", student_id).execute()
+        return {"status": "deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete student: {e}")
+
+@app.post("/admin/students/{student_id}/toggle-activation", summary="(Admin) Toggle student activation")
+def toggle_student_activation(student_id: str, _: bool = Depends(get_admin_access)):
+    try:
+        current = supabase.table("students").select("activated").eq("id", student_id).single().execute()
+        new_status = not current.data["activated"]
+        
+        res = supabase.table("students").update({"activated": new_status}).eq("id", student_id).execute()
+        return {"status": "toggled", "activated": new_status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to toggle activation: {e}")
+
+@app.get("/progress/{student_id}", summary="(Admin) Get a specific student's progress")
+def get_student_progress(student_id: str, _: bool = Depends(get_admin_access)):
+    result = supabase.table("student_progress").select("*").eq("student_id", student_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="No progress found for this student")
+    return {"progress": result.data[0]}
+
+@app.get("/progress", summary="(Admin) Get all students' progress")
+def get_all_progress(_: bool = Depends(get_admin_access)):
+    result = supabase.table("student_progress").select("*, students(full_name, email)").execute()
+    return {"all_progress": result.data}
+
+# --- Questions and Attempts (Protected) ---
+
+@app.get("/questions", summary="Get student questions (Protected)")
+def get_student_questions(section_id: str = None, student_id: str = Depends(get_current_student)):
+    """
+    ظٹط¬ظ„ط¨ ظ‚ط§ط¦ظ…ط© ط§ظ„ط£ط³ط¦ظ„ط©. ظٹطھط·ظ„ط¨ `session_token` طµط§ظ„ط­ ظپظٹ ط§ظ„ظ€ header.
+    ظٹظ…ظƒظ† ظپظ„طھط±ط© ط§ظ„ط£ط³ط¦ظ„ط© ط§ط®طھظٹط§ط±ظٹط§ظ‹ ط¨ظˆط§ط³ط·ط© `section_id`.
+    """
+    try:
+        query = supabase.table("questions").select("*")
+        if section_id:
+            query = query.eq("section_id", section_id)
+        questions = query.execute().data
+        return {"questions": questions}
+    except Exception as e:
+        print(f"â‌Œ Error fetching questions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve questions.")
+
+@app.post("/attempts/submit", summary="Submit student answer (Protected)")
+def submit_student_answer(req: SubmitAnswerRequest, student_id: str = Depends(get_current_student)):
+    """
+    ظٹط³ط¬ظ„ ط¥ط¬ط§ط¨ط© ط§ظ„ط·ط§ظ„ط¨ ط¹ظ„ظ‰ ط³ط¤ط§ظ„. ظٹطھط·ظ„ط¨ `session_token` طµط§ظ„ط­ ظپظٹ ط§ظ„ظ€ header.
+    """
+    try:
+        # --- Rate Limiting (from your suggestion) ---
+        # Prevent submitting for the same question within 5 seconds
+        last_attempt_res = supabase.table("attempts").select("created_at").eq("student_id", student_id).eq("question_id", req.question_id).order("created_at", desc=True).limit(1).execute()
+        if last_attempt_res.data:
+            last_attempt_time = datetime.fromisoformat(last_attempt_res.data[0]['created_at'])
+            # Ensure current time is timezone-aware for correct comparison
+            current_time = datetime.now(timezone.utc)
+            if (current_time - last_attempt_time).total_seconds() < 5:
+                raise HTTPException(
+                    status_code=429, detail="Too many attempts. Please wait a few seconds."
+                )
+
+        # 1. Fetch question to check the answer
+        question_res = supabase.table("questions").select("*").eq("id", req.question_id).limit(1).execute()
+        if not question_res.data:
+            raise HTTPException(status_code=404, detail="Question not found")
+        question = question_res.data[0]
+
+        # 2. Grade the answer
+        is_correct = False
+        answer_type = question.get("answer_type", "mcq")
+        
+        if answer_type == "mcq":
+            correct_answer = question.get("correct_answer", "")
+            is_correct = req.submitted_answer.strip().upper() == correct_answer.strip().upper()
+        elif answer_type == "numeric":
+            accepted_answers = question.get("accepted_numeric_answers")
+            if accepted_answers: # New logic: check against list
+                try:
+                    submitted_val = float(req.submitted_answer)
+                    is_correct = any(abs(submitted_val - accepted_val) < 1e-9 for accepted_val in accepted_answers)
+                except (ValueError, TypeError):
+                    is_correct = False
+        else:  # Handles 'text', 'short_answer', etc.
+            correct_answer = question.get("correct_answer", "")
+            is_correct = req.submitted_answer.strip().lower() == correct_answer.strip().lower()
+
+        # 3. Check if this is the first attempt for this question
+        first_attempt_res = supabase.table("attempts").select("id", count='exact').eq("student_id", student_id).eq("question_id", req.question_id).execute()
+        is_first_attempt = first_attempt_res.count == 0
+
+        # 4. Record the attempt (FIX: This line was missing)
+        supabase.table("attempts").insert({
+            "student_id": student_id,
+            "question_id": req.question_id,
+            "submitted_answer": req.submitted_answer,
+            "is_correct": is_correct,
+            "revealed": req.revealed,
+            "is_first_attempt": is_first_attempt,
+        }).execute()
+
+        return {"is_correct": is_correct, "question_id": req.question_id, "is_first_attempt": is_first_attempt}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="An error occurred while submitting the answer.")
+
+# --- Reporting Endpoints ---
+# Note: These endpoints assume you have created corresponding RPC functions in Supabase
+# for security and performance. This is safer than a generic "exec_sql" function.
+
+@app.get("/reports/students", summary="(Admin) Generate student performance report")
+def get_student_report(start_date: str = None, end_date: str = None, _: bool = Depends(get_admin_access)):
+    """
+    Calls a specific RPC function `get_student_report` in Supabase.
+    This is the recommended secure way to run complex SQL queries.
+    """
+    try:
+        params = {"start_date_param": start_date, "end_date_param": end_date}
+        result = supabase.rpc("get_student_report", params).execute()
+        return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+
+@app.get("/reports/questions", summary="(Admin) Generate question performance report")
+def get_question_report(start_date: str = None, end_date: str = None, _: bool = Depends(get_admin_access)):
+    """
+    Calls a specific RPC function `get_question_report` in Supabase.
+    """
+    try:
+        params = {"start_date_param": start_date, "end_date_param": end_date}
+        result = supabase.rpc("get_question_report", params).execute()
+        return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+
+@app.get("/reports/sections", summary="(Admin) Generate section performance report")
+def get_section_report(start_date: str = None, end_date: str = None, _: bool = Depends(get_admin_access)):
+    """
+    Calls a specific RPC function `get_section_report` in Supabase.
+    """
+    try:
+        params = {"start_date_param": start_date, "end_date_param": end_date}
+        result = supabase.rpc("get_section_report", params).execute()
+        return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+
+@app.get("/reports/global", summary="(Admin) Generate global performance report")
+def get_global_report(start_date: str = None, end_date: str = None, _: bool = Depends(get_admin_access)):
+    """
+    Calls a specific RPC function `get_global_report` in Supabase.
+    """
+    try:
+        params = {"start_date_param": start_date, "end_date_param": end_date}
+        result = supabase.rpc("get_global_report", params).execute()
+        return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+
+# --- New Endpoints: Sections & Questions via Server ---
+
+@app.get("/sections", summary="Get all sections (Protected)")
+def get_sections(student_id: str = Depends(get_current_student)):
+    """
+    ظٹط¬ظ„ط¨ ظƒظ„ ط§ظ„ط£ظ‚ط³ط§ظ… ط§ظ„ظ…طھط§ط­ط©. ظٹطھط·ظ„ط¨ session_token طµط§ظ„ط­.
+    """
+    try:
+        result = supabase.table("sections").select("id, name, description").order("created_at").execute()
+        return {"sections": result.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to retrieve sections.")
+
+
+@app.get("/sections/{section_id}/questions", summary="Get questions for a section (Protected)")
+def get_section_questions(section_id: str, student_id: str = Depends(get_current_student)):
+    """
+    ظٹط¬ظ„ط¨ ط£ط³ط¦ظ„ط© ظ‚ط³ظ… ظ…ط¹ظٹظ† ظ…ط¹ ط±ظˆط§ط¨ط· ط§ظ„طµظˆط±. ظٹطھط·ظ„ط¨ session_token طµط§ظ„ط­.
+    """
+    try:
+        result = supabase.table("questions").select("*").eq("section_id", section_id).order("created_at").execute()
+        
+        questions = result.data
+        # âœ… ط£ط¶ظپ ط±ط§ط¨ط· ط§ظ„طµظˆط±ط© ط§ظ„ظƒط§ظ…ظ„ ظ„ظƒظ„ ط³ط¤ط§ظ„
+        for q in questions:
+            if q.get("image_path"):
+                q["image_url"] = supabase.storage.from_("questions").get_public_url(q["image_path"])
+            else:
+                q["image_url"] = None
+        
+        return {"questions": questions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to retrieve questions.")
+
+
+@app.get("/student/profile", summary="Get current student profile (Protected)")
+def get_student_profile(student_id: str = Depends(get_current_student)):
+    """
+    ظٹط¬ظ„ط¨ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط·ط§ظ„ط¨ ط§ظ„ط­ط§ظ„ظٹ (ط§ظ„ط§ط³ظ…طŒ ط§ظ„ظپطµظ„طŒ ظ…ط¹ط¯ظ„ ط§ظ„ظ†ط¬ط§ط­).
+    """
+    try:
+        # ط¨ظٹط§ظ†ط§طھ ط§ظ„ط·ط§ظ„ط¨
+        student_res = supabase.table("students").select("id, full_name, email, class_name").eq("id", student_id).limit(1).execute()
+        if not student_res.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student = student_res.data[0]
+        
+        # âœ… ط­ط³ط§ط¨ ظ…ط¹ط¯ظ„ ط§ظ„ظ†ط¬ط§ط­ ظ…ظ† ط£ظˆظ„ ظ…ط­ط§ظˆظ„ط© ظپظ‚ط·
+        total_res = supabase.table("attempts").select("id", count="exact").eq("student_id", student_id).eq("is_first_attempt", True).execute()
+        correct_res = supabase.table("attempts").select("id", count="exact").eq("student_id", student_id).eq("is_first_attempt", True).eq("is_correct", True).execute()
+        
+        total = total_res.count or 0
+        correct = correct_res.count or 0
+        success_rate = (correct / total * 100) if total > 0 else 0.0
+        
+        return {
+            "student": {
+                "id": student["id"],
+                "full_name": student["full_name"],
+                "email": student["email"],
+                "class_name": student.get("class_name", "ط؛ظٹط± ظ…ط­ط¯ط¯"),
+                "success_rate": round(success_rate, 1),
+                "total_attempts": total,
+                "correct_attempts": correct,
+            }
+        }
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get profile: {e}")
+
+# -----------------------------
+# Run (ظ„ظ„طھط¬ط±ط¨ط© ط§ظ„ظ…ط­ظ„ظٹط© ظپظ‚ط·)
+# -----------------------------
+if __name__ == "__main__":
+    import uvicorn
+    from multiprocessing import freeze_support
+
+    freeze_support()  # Add this for Windows multiprocessing support
+    # To prevent the reloader from scanning the entire user directory on Windows,
+    # which can cause errors with long file paths (like in .gradle caches),
+    # we explicitly specify the project directory to watch for changes.
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    uvicorn.run(
+        "mcp_server:app", host="0.0.0.0", port=8000, reload=True, reload_dirs=[project_dir]
+    )

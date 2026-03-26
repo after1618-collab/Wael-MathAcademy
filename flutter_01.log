@@ -1,0 +1,107 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter create .
+
+## exception
+
+PathExistsException: PathExistsException: Creation failed, path = 'C:\Users\Mr. Taher\wael mcp\test' (OS Error: Cannot create a file when that file already exists.
+, errno = 183)
+
+```
+#0      _Directory.createSync (dart:io/directory_impl.dart:146:7)
+#1      _File.createSync (dart:io/file_impl.dart:340:14)
+#2      ForwardingFile.createSync (package:file/src/forwarding/forwarding_file.dart:26:16)
+#3      ErrorHandlingFile.createSync.<anonymous closure> (package:flutter_tools/src/base/error_handling_io.dart:265:22)
+#4      _runSync (package:flutter_tools/src/base/error_handling_io.dart:549:14)
+#5      ErrorHandlingFile.createSync (package:flutter_tools/src/base/error_handling_io.dart:264:5)
+#6      Template.render.<anonymous closure> (package:flutter_tools/src/template.dart:351:28)
+#7      _LinkedHashMapMixin.forEach (dart:_compact_hash:764:13)
+#8      Template.render (package:flutter_tools/src/template.dart:311:24)
+#9      CreateBase.renderMerged (package:flutter_tools/src/commands/create_base.dart:455:21)
+<asynchronous suspension>
+#10     CreateBase.generateApp (package:flutter_tools/src/commands/create_base.dart:478:23)
+<asynchronous suspension>
+#11     CreateCommand.runCommand (package:flutter_tools/src/commands/create.dart:460:31)
+<asynchronous suspension>
+#12     FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1563:27)
+<asynchronous suspension>
+#13     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#14     CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+<asynchronous suspension>
+#15     FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:494:9)
+<asynchronous suspension>
+#16     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#17     FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:431:5)
+<asynchronous suspension>
+#18     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:98:11)
+<asynchronous suspension>
+#19     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#20     main (package:flutter_tools/executable.dart:102:3)
+<asynchronous suspension>
+```
+
+## flutter doctor
+
+```
+[32m[✓][39m Flutter (Channel stable, 3.32.8, on Microsoft Windows [Version 10.0.19045.6332], locale ar-EG) [٢٫٠s]
+    [32m•[39m Flutter version 3.32.8 on channel stable at D:\flutter\flutter
+    [32m•[39m Upstream repository https://github.com/flutter/flutter.git
+    [32m•[39m Framework revision edada7c56e (10 weeks ago), 2025-07-25 14:08:03 +0000
+    [32m•[39m Engine revision ef0cd00091
+    [32m•[39m Dart version 3.8.1
+    [32m•[39m DevTools version 2.45.1
+
+[32m[✓][39m Windows Version (Windows 10, 22H2, 2009) [٢٫٩s]
+
+[33m[!][39m Android toolchain - develop for Android devices (Android SDK version 34.0.0) [١٬٢٨٥ms]
+    [32m•[39m Android SDK at C:\Users\Mr. Taher\AppData\Local\Android\sdk
+    [31m✗[39m cmdline-tools component is missing.
+      Try installing or updating Android Studio.
+      Alternatively, download the tools from https://developer.android.com/studio#command-line-tools-only and make sure
+      to set the ANDROID_HOME environment variable.
+      See https://developer.android.com/studio/command-line for more details.
+    [31m✗[39m Android license status unknown.
+      Run `flutter doctor --android-licenses` to accept the SDK licenses.
+      See https://flutter.dev/to/windows-android-setup for more details.
+
+[32m[✓][39m Chrome - develop for the web [٨٧٤ms]
+    [32m•[39m Chrome at C:\Program Files\Google\Chrome\Application\chrome.exe
+
+[33m[!][39m Visual Studio - develop Windows apps (Visual Studio Build Tools 2019 16.11.38) [٨٧٠ms]
+    [32m•[39m Visual Studio at C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools
+    [32m•[39m Visual Studio Build Tools 2019 version 16.11.35026.282
+    [31m✗[39m Visual Studio is missing necessary components. Please re-run the Visual Studio installer for the "Desktop
+      development with C++" workload, and include these components:
+        MSVC v142 - VS 2019 C++ x64/x86 build tools
+         - If there are multiple build tool versions available, install the latest
+        C++ CMake tools for Windows
+        Windows 10 SDK
+
+[32m[✓][39m Android Studio (version 2025.1.2) [٦٣ms]
+    [32m•[39m Android Studio at D:\andorid st
+    [32m•[39m Flutter plugin can be installed from:
+      🔨 https://plugins.jetbrains.com/plugin/9212-flutter
+    [32m•[39m Dart plugin can be installed from:
+      🔨 https://plugins.jetbrains.com/plugin/6351-dart
+    [32m•[39m Java version OpenJDK Runtime Environment (build 21.0.6+-13391695-b895.109)
+
+[32m[✓][39m VS Code (version 1.104.2) [٥٦ms]
+    [32m•[39m VS Code at C:\Users\Mr. Taher\AppData\Local\Programs\Microsoft VS Code
+    [32m•[39m Flutter extension version 3.120.0
+
+[32m[✓][39m Connected device (3 available) [٤٣٩ms]
+    [32m•[39m Windows (desktop) • windows • windows-x64    • Microsoft Windows [Version 10.0.19045.6332]
+    [32m•[39m Chrome (web)      • chrome  • web-javascript • Google Chrome 116.0.5845.187
+    [32m•[39m Edge (web)        • edge    • web-javascript • Microsoft Edge 138.0.3351.121 (unsupported)
+
+[32m[✓][39m Network resources [٤٤٫١s]
+    [32m•[39m All expected network resources are available.
+
+[33m![39m Doctor found issues in 2 categories.
+```
