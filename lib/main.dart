@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wael_mcp/session_manager.dart';
 import 'package:wael_mcp/api_service.dart';
 import 'package:wael_mcp/student_dashboard.dart';
@@ -7,6 +8,13 @@ import 'login_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ✅ تهيئة Supabase
+  await Supabase.initialize(
+    url: 'https://mhystvgetxndvbnkuczz.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+  );
+
   await SessionManager().loadToken();
   runApp(const MyApp());
 }
