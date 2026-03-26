@@ -6,7 +6,7 @@ import 'package:wael_mcp/session_manager.dart';
 
 class ApiService {
   // ✅ Change this when deploying to production
-  static const String baseUrl = 'http://127.0.0.1:8000';
+  static const String baseUrl = 'https://wael-mathacademy.up.railway.app';
   static const Duration _timeout = Duration(seconds: 15);
 
   // --- Private: Build Headers ---
