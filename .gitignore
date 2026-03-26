@@ -1,0 +1,29 @@
+# الحماية والخصوصية
+.env
+*.log
+*.sql
+server_backup.txt
+all_code.txt
+video_code.txt
+gitignore.txt
+
+# ملفات فلاتر الناتجة (تأخذ مساحة كبيرة ولا نحتاجها في الرفع)
+/build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+
+# ملفات بيئة بايثون (بما أنك تستخدم سكربتات مساعدة)
+venv/
+__pycache__/
+*.pyc
+
+# ملفات المحرر (Android Studio / VS Code)
+.idea/
+*.iml
+.vscode/
+
+# ملفات النظام
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+# إنشاء مهمة تعمل كل 5 أيام
+$action = New-ScheduledTaskAction -Execute "python.exe" -Argument "d:\wael mcp\keep_alive.py"
+$trigger = New-ScheduledTaskTrigger -Daily -At 9AM -DaysInterval 5
+Register-ScheduledTask -TaskName "Supabase Keep Alive" -Action $action -Trigger $trigger

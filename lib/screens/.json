@@ -1,0 +1,17 @@
+[
+  {
+    "type": "key_up",
+    "key": "enter",
+    "time": 0.1036
+  },
+  {
+    "type": "key_down",
+    "key": "enter",
+    "time": 1.2513
+  },
+  {
+    "type": "key_up",
+    "key": "enter",
+    "time": 1.3503
+  }
+]
