@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wael_mcp/api_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class QuestionScreen extends StatefulWidget {
   final String sectionId;
@@ -22,6 +23,7 @@ class _QuestionScreenState extends State<QuestionScreen> {
   int _currentPage = 0;
   final Map<String, bool> _isCorrect = {};
   final Map<String, bool> _isRevealed = {};
+  final _supabase = Supabase.instance.client;
 
   @override
   void initState() {
@@ -29,6 +31,21 @@ class _QuestionScreenState extends State<QuestionScreen> {
     _pageController.addListener(() =>
         setState(() => _currentPage = _pageController.page?.round() ?? 0));
     _questionsFuture = ApiService.getQuestions(widget.sectionId);
+  }
+
+  Widget _buildWatermarkText(String text, double angle) {
+    return Transform.rotate(
+      angle: angle,
+      child: Text(
+        text,
+        style: TextStyle(
+          color: const Color(0xFF00FFD4).withOpacity(0.08),
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'monospace',
+        ),
+      ),
+    );
   }
 
   Future<void> _submitAnswer(String questionId, String answer,
@@ -116,19 +133,40 @@ class _QuestionScreenState extends State<QuestionScreen> {
           }
 
           final questions = snapshot.data!;
+          final user = _supabase.auth.currentUser;
+          final studentInfo = "${user?.userMetadata?['full_name'] ?? 'Student'} • ${user?.email ?? ''}";
+
           return Stack(
             children: [
-              // العلامة المائية للوجو (شفافة ولا تعيق الضغط)
+              // === 🛡️ Turqoise Text Watermark ===
               Positioned.fill(
                 child: IgnorePointer(
-                  child: Opacity(
-                    opacity: 0.15,
-                    child: Center(
-                      child: Image.asset(
-                        'assets/logo.jpg',
-                        fit: BoxFit.contain,
-                      ),
-                    ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                          top: 40,
+                          left: 20,
+                          child: _buildWatermarkText(studentInfo, -0.2)),
+                      Positioned(
+                          top: 100,
+                          right: 20,
+                          child: _buildWatermarkText(studentInfo, 0.15)),
+                      Positioned(
+                          top: MediaQuery.of(context).size.height * 0.4,
+                          left: 10,
+                          child: _buildWatermarkText(studentInfo, -0.1)),
+                      Positioned(
+                          bottom: 150,
+                          left: 30,
+                          child: _buildWatermarkText(studentInfo, -0.1)),
+                      Positioned(
+                          bottom: 50,
+                          right: 20,
+                          child: _buildWatermarkText(studentInfo, 0.2)),
+                      Align(
+                          alignment: Alignment.center,
+                          child: _buildWatermarkText(studentInfo, 0.0)),
+                    ],
                   ),
                 ),
               ),

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:html' as html;
+import 'dart:js' as js;
+import 'dart:async';
 
 class StudentQuestionsScreen extends StatefulWidget {
   final Map<String, dynamic> section;
@@ -174,15 +177,179 @@ class QuestionScreen extends StatefulWidget {
   State<QuestionScreen> createState() => _QuestionScreenState();
 }
 
-class _QuestionScreenState extends State<QuestionScreen> {
+class _QuestionScreenState extends State<QuestionScreen>
+    with WidgetsBindingObserver {
   String? selectedAnswer;
   final TextEditingController _controller = TextEditingController();
   final _supabase = Supabase.instance.client;
+
+  // 🛡️ Protection variables
+  final List<StreamSubscription> _subscriptions = [];
+  html.StyleElement? _protectionStyle;
+  Timer? _devToolsTimer;
+  bool _devToolsDetected = false;
 
   List<String> getOptions() {
     final baseOptions = ["A", "B", "C", "D"];
     if (widget.allowE) baseOptions.add("E");
     return baseOptions;
+  }
+
+  // =============================================
+  //  🔒 LAYER 1: Global CSS Protection
+  // =============================================
+  void _injectGlobalProtectionCSS() {
+    _protectionStyle = html.StyleElement()
+      ..text = '''
+        /* ===== QUESTION PROTECTION ===== */
+        
+        /* Disable ALL selection */
+        body, html, * {
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          user-select: none !important;
+          -webkit-touch-callout: none !important;
+        }
+        
+        /* Disable drag */
+        img, video, iframe, a, * {
+          -webkit-user-drag: none !important;
+          -khtml-user-drag: none !important;
+          -moz-user-drag: none !important;
+          -o-user-drag: none !important;
+          user-drag: none !important;
+          draggable: false !important;
+        }
+        
+        /* Disable printing */
+        @media print {
+          body, html {
+            display: none !important;
+            visibility: hidden !important;
+          }
+        }
+        
+        /* Disable image toolbar */
+        img {
+          -ms-interpolation-mode: nearest-neighbor;
+          pointer-events: none;
+        }
+      ''';
+    html.document.head?.append(_protectionStyle!);
+  }
+
+  // =============================================
+  //  🛡️ LAYER 2: Event-Level Protections
+  // =============================================
+  void _enableAllProtections() {
+    _subscriptions.add(
+      html.document.onContextMenu.listen((e) {
+        e.preventDefault();
+        e.stopPropagation();
+        _showWarning('Right-click is disabled');
+      }),
+    );
+
+    _subscriptions.add(
+      html.document.onKeyDown.listen((event) {
+        final key = event.keyCode;
+        final ctrl = event.ctrlKey || event.metaKey;
+        final shift = event.shiftKey;
+
+        if (key == 44) {
+          event.preventDefault();
+          _showWarning('Screenshots are not allowed');
+          return;
+        }
+
+        if (key == 123) {
+          event.preventDefault();
+          _showWarning('Developer tools are blocked');
+          return;
+        }
+
+        if (ctrl && [83, 85, 80].contains(key)) {
+          event.preventDefault();
+          return;
+        }
+
+        if (ctrl && shift && [73, 74, 67].contains(key)) {
+          event.preventDefault();
+          return;
+        }
+
+        if (ctrl && key == 65) {
+          event.preventDefault();
+          return;
+        }
+      }),
+    );
+
+    _subscriptions.add(html.document.onDragStart.listen((e) => e.preventDefault()));
+    _subscriptions.add(html.document.onDrop.listen((e) => e.preventDefault()));
+    _startDevToolsDetection();
+  }
+
+  void _startDevToolsDetection() {
+    _devToolsTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      try {
+        js.context.callMethod('eval', [
+          '''
+          (function() {
+            var devtools = false;
+            var threshold = 160;
+            if (window.outerWidth - window.innerWidth > threshold ||
+                window.outerHeight - window.innerHeight > threshold) {
+              devtools = true;
+            }
+            window.__devtools_open = devtools;
+          })();
+          '''
+        ]);
+
+        final isOpen = js.context['__devtools_open'] as bool? ?? false;
+
+        if (isOpen && mounted && !_devToolsDetected) {
+          setState(() => _devToolsDetected = true);
+          _showWarning('Developer tools detected! Close them to continue.');
+        } else if (!isOpen && mounted && _devToolsDetected) {
+          setState(() => _devToolsDetected = false);
+        }
+      } catch (e) {
+        debugPrint('DevTools detection error: $e');
+      }
+    });
+  }
+
+  void _removeAllProtections() {
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    _subscriptions.clear();
+    _protectionStyle?.remove();
+    _devToolsTimer?.cancel();
+  }
+
+  void _showWarning(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.shield_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(child: Text('⚠️ $message', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
+          ],
+        ),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Widget _buildWatermarkText(String text, double angle) {
@@ -191,7 +358,7 @@ class _QuestionScreenState extends State<QuestionScreen> {
       child: Text(
         text,
         style: TextStyle(
-          color: const Color(0xFF00FFD4).withOpacity(0.08), // ✅ لون أخضر تركواز شفاف
+          color: const Color(0xFF00FFD4).withOpacity(0.19), // ✅ تم زيادة الشفافية إلى 0.19
           fontSize: 12,
           fontWeight: FontWeight.bold,
           fontFamily: 'monospace',
@@ -201,7 +368,17 @@ class _QuestionScreenState extends State<QuestionScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _injectGlobalProtectionCSS();
+    _enableAllProtections();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _removeAllProtections();
     _controller.dispose();
     super.dispose();
   }
@@ -209,49 +386,72 @@ class _QuestionScreenState extends State<QuestionScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _supabase.auth.currentUser;
-    final studentInfo = "${user?.userMetadata?['full_name'] ?? 'Student'} • ${user?.email ?? ''} • ${DateTime.now().toString().split(' ')[0]}";
+    final studentInfo =
+        "${user?.userMetadata?['full_name'] ?? 'Student'} • ${user?.email ?? ''} • ${DateTime.now().toString().split(' ')[0]}";
+
+    if (_devToolsDetected) {
+      return Scaffold(
+        backgroundColor: Colors.red.shade50,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.dangerous_rounded, size: 60, color: Colors.red),
+              const SizedBox(height: 20),
+              const Text(
+                '⚠️ Developer Tools Detected',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Please close Developer Tools to continue.',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
       body: SafeArea(
         child: Stack(
           children: [
-            // === 🛡️ ADVANCED TEXT WATERMARK LAYER (Same as Video) ===
+            // === 🛡️ WATERMARK LAYER (Text) ===
             Positioned.fill(
               child: IgnorePointer(
                 child: Stack(
                   children: [
-                    // Top-left
                     Positioned(
                       top: 20,
                       left: 20,
                       child: _buildWatermarkText(studentInfo, -0.3),
                     ),
-                    // Top-right
                     Positioned(
                       top: 40,
                       right: 30,
                       child: _buildWatermarkText(studentInfo, 0.2),
                     ),
-                    // Middle-left
                     Positioned(
                       top: MediaQuery.of(context).size.height * 0.4,
                       left: 10,
                       child: _buildWatermarkText(studentInfo, -0.1),
                     ),
-                    // Bottom-left
                     Positioned(
                       bottom: 80,
                       left: 40,
                       child: _buildWatermarkText(studentInfo, -0.2),
                     ),
-                    // Bottom-right
                     Positioned(
                       bottom: 40,
                       right: 20,
                       child: _buildWatermarkText(studentInfo, 0.15),
                     ),
-                    // Center
                     Align(
                       alignment: Alignment.center,
                       child: _buildWatermarkText(studentInfo, 0.0),
@@ -265,92 +465,97 @@ class _QuestionScreenState extends State<QuestionScreen> {
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
-            children: [
-              Expanded(
-                flex: 5,
-                child: Center(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: InteractiveViewer(
-                      panEnabled: true,
-                      minScale: 1.0,
-                      maxScale: 4.0,
-                      child: Image.network(
-                        widget.questionImage,
-                        fit: BoxFit.contain,
-                        loadingBuilder: (context, child, progress) =>
-                            progress == null
-                                ? child
-                                : const Center(child: CircularProgressIndicator()),
-                        errorBuilder: (context, error, stack) =>
-                            const Center(child: Icon(Icons.error)),
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: InteractiveViewer(
+                          panEnabled: true,
+                          minScale: 1.0,
+                          maxScale: 4.0,
+                          child: Image.network(
+                            widget.questionImage,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (context, child, progress) =>
+                                progress == null
+                                    ? child
+                                    : const Center(
+                                        child: CircularProgressIndicator()),
+                            errorBuilder: (context, error, stack) =>
+                                const Center(child: Icon(Icons.error)),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(flex: 3, child: _buildAnswerWidget()),
-              if (widget.revealImage != null) ...[
-                const SizedBox(height: 10),
-                GestureDetector(
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (_) =>
-                          Dialog(child: Image.network(widget.revealImage!)),
-                    );
-                  },
-                  child: const Text(
-                    "🔷 Tap to show hint image",
-                    style: TextStyle(
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold,
+                  const SizedBox(height: 20),
+                  Expanded(flex: 3, child: _buildAnswerWidget()),
+                  if (widget.revealImage != null) ...[
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) =>
+                              Dialog(child: Image.network(widget.revealImage!)),
+                        );
+                      },
+                      child: const Text(
+                        "🔷 Tap to show hint image",
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 40, vertical: 16),
+                        backgroundColor: Colors.blueAccent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        if (widget.answerType == "mcq" &&
+                            selectedAnswer == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text("Select an answer first")),
+                          );
+                          return;
+                        }
+                        if ((widget.answerType == "numeric" ||
+                                widget.answerType == "text") &&
+                            _controller.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text("Enter your answer first")),
+                          );
+                          return;
+                        }
+                        widget.onSubmit(
+                          widget.answerType == "mcq"
+                              ? selectedAnswer!
+                              : _controller.text.trim(),
+                        );
+                      },
+                      child: const Text(
+                        "Submit Answer",
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
                     ),
                   ),
-                ),
-              ],
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-                    backgroundColor: Colors.blueAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () {
-                    if (widget.answerType == "mcq" && selectedAnswer == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Select an answer first")),
-                      );
-                      return;
-                    }
-                    if ((widget.answerType == "numeric" ||
-                            widget.answerType == "text") &&
-                        _controller.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Enter your answer first")),
-                      );
-                      return;
-                    }
-                    widget.onSubmit(
-                      widget.answerType == "mcq"
-                          ? selectedAnswer!
-                          : _controller.text.trim(),
-                    );
-                  },
-                  child: const Text(
-                    "Submit Answer",
-                    style: TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
           ],
         ),
       ),
