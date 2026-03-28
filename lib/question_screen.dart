@@ -150,6 +150,19 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
           event.preventDefault();
           return;
         }
+
+        // ✅ التنقل بالأسهم (يمين = التالي، يسار = السابق)
+        if (key == 39) { // Right Arrow
+          _pageController.nextPage(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        } else if (key == 37) { // Left Arrow
+          _pageController.previousPage(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
       }),
     );
 
@@ -382,17 +395,41 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
                       Positioned.fill(
                         child: Center(
                           child: Opacity(
-                            opacity: 0.25, // تم زيادتها بناءً على طلب المستخدم
+                            opacity: 0.15, // ✅ تقليل الشفافية إلى 0.15
                             child: Image.asset(
                               'assets/logo.jpg',
                               fit: BoxFit.scaleDown,
-                              width: 300, // ✅ تم مضاعفة الحجم
-                              height: 300,
+                              width: 600, // ✅ تم مضاعفة الحجم إلى 600
+                              height: 600,
                             ),
                           ),
                         ),
                       ),
                       // --- Text Watermarks ---
+                      // 1. Triple Central Watermarks (Requested: Top, Center, Bottom)
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 80),
+                          child: _buildWatermarkText(studentInfo, 0.0),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.center,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 100), // ✅ رفعها للأعلى (حوالي 3 سم)
+                          child: _buildWatermarkText(studentInfo, 0.0),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 220), // ✅ رفعها للأعلى (حوالي 3 سم إضافي)
+                          child: _buildWatermarkText(studentInfo, 0.0),
+                        ),
+                      ),
+
+                      // 2. Extra Corner and Intermediate Watermarks for protection
                       Positioned(
                         top: 20,
                         left: 20,
@@ -404,9 +441,34 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
                         child: _buildWatermarkText(studentInfo, 0.2),
                       ),
                       Positioned(
+                        top: MediaQuery.of(context).size.height * 0.25,
+                        left: 50,
+                        child: _buildWatermarkText(studentInfo, 0.1),
+                      ),
+                      Positioned(
+                        top: MediaQuery.of(context).size.height * 0.25,
+                        right: 50,
+                        child: _buildWatermarkText(studentInfo, -0.15),
+                      ),
+                      Positioned(
                         top: MediaQuery.of(context).size.height * 0.45,
                         left: 10,
                         child: _buildWatermarkText(studentInfo, -0.1),
+                      ),
+                      Positioned(
+                        top: MediaQuery.of(context).size.height * 0.45,
+                        right: 10,
+                        child: _buildWatermarkText(studentInfo, 0.12),
+                      ),
+                      Positioned(
+                        top: MediaQuery.of(context).size.height * 0.65,
+                        left: 60,
+                        child: _buildWatermarkText(studentInfo, 0.25),
+                      ),
+                      Positioned(
+                        top: MediaQuery.of(context).size.height * 0.65,
+                        right: 60,
+                        child: _buildWatermarkText(studentInfo, -0.2),
                       ),
                       Positioned(
                         bottom: 180,
@@ -414,13 +476,19 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
                         child: _buildWatermarkText(studentInfo, -0.2),
                       ),
                       Positioned(
+                        bottom: 180,
+                        right: 40,
+                        child: _buildWatermarkText(studentInfo, 0.3),
+                      ),
+                      Positioned(
                         bottom: 40,
                         right: 20,
                         child: _buildWatermarkText(studentInfo, 0.15),
                       ),
-                      Align(
-                        alignment: Alignment.center,
-                        child: _buildWatermarkText(studentInfo, 0.0),
+                      Positioned(
+                        bottom: 40,
+                        left: 20,
+                        child: _buildWatermarkText(studentInfo, -0.12),
                       ),
                     ],
                   ),
