@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:wael_mcp/api_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:html' as html;
+import 'dart:js' as js;
+import 'dart:async';
 
 class QuestionScreen extends StatefulWidget {
   final String sectionId;
@@ -16,21 +19,204 @@ class QuestionScreen extends StatefulWidget {
   State<QuestionScreen> createState() => _QuestionScreenState();
 }
 
-class _QuestionScreenState extends State<QuestionScreen> {
+class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObserver {
   late final Future<List<Map<String, dynamic>>> _questionsFuture;
   final PageController _pageController = PageController();
   final Map<String, String> _selectedAnswers = {};
   int _currentPage = 0;
   final Map<String, bool> _isCorrect = {};
   final Map<String, bool> _isRevealed = {};
-  final _supabase = Supabase.instance.client;
+  
+  String _studentName = 'طالب';
+  String _studentEmail = '';
+
+  // 🛡️ Protection variables
+  final List<StreamSubscription> _subscriptions = [];
+  html.StyleElement? _protectionStyle;
+  Timer? _devToolsTimer;
+  bool _devToolsDetected = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _injectGlobalProtectionCSS();
+    _enableAllProtections();
     _pageController.addListener(() =>
         setState(() => _currentPage = _pageController.page?.round() ?? 0));
     _questionsFuture = ApiService.getQuestions(widget.sectionId);
+    _loadStudentProfile();
+  }
+
+  Future<void> _loadStudentProfile() async {
+    try {
+      final profile = await ApiService.getProfile();
+      if (mounted) {
+        setState(() {
+          _studentName = profile['full_name'] ?? 'طالب';
+          _studentEmail = profile['email'] ?? '';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading profile for watermark: $e');
+    }
+  }
+
+  // =============================================
+  //  🔒 LAYER 1: Global CSS Protection
+  // =============================================
+  void _injectGlobalProtectionCSS() {
+    _protectionStyle = html.StyleElement()
+      ..text = '''
+        /* ===== QUESTION PROTECTION ===== */
+        
+        /* Disable ALL selection */
+        body, html, * {
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          user-select: none !important;
+          -webkit-touch-callout: none !important;
+        }
+        
+        /* Disable drag */
+        img, video, iframe, a, * {
+          -webkit-user-drag: none !important;
+          -khtml-user-drag: none !important;
+          -moz-user-drag: none !important;
+          -o-user-drag: none !important;
+          user-drag: none !important;
+          draggable: false !important;
+        }
+        
+        /* Disable printing */
+        @media print {
+          body, html {
+            display: none !important;
+            visibility: hidden !important;
+          }
+        }
+        
+        /* Disable image toolbar */
+        img {
+          -ms-interpolation-mode: nearest-neighbor;
+          pointer-events: none;
+        }
+      ''';
+    html.document.head?.append(_protectionStyle!);
+  }
+
+  // =============================================
+  //  🛡️ LAYER 2: Event-Level Protections
+  // =============================================
+  void _enableAllProtections() {
+    _subscriptions.add(
+      html.document.onContextMenu.listen((e) {
+        e.preventDefault();
+        e.stopPropagation();
+        _showWarning('Right-click is disabled');
+      }),
+    );
+
+    _subscriptions.add(
+      html.document.onKeyDown.listen((event) {
+        final key = event.keyCode;
+        final ctrl = event.ctrlKey || event.metaKey;
+        final shift = event.shiftKey;
+
+        if (key == 44) {
+          event.preventDefault();
+          _showWarning('Screenshots are not allowed');
+          return;
+        }
+
+        if (key == 123) {
+          event.preventDefault();
+          _showWarning('Developer tools are blocked');
+          return;
+        }
+
+        if (ctrl && [83, 85, 80].contains(key)) {
+          event.preventDefault();
+          return;
+        }
+
+        if (ctrl && shift && [73, 74, 67].contains(key)) {
+          event.preventDefault();
+          return;
+        }
+
+        if (ctrl && key == 65) {
+          event.preventDefault();
+          return;
+        }
+      }),
+    );
+
+    _subscriptions.add(html.document.onDragStart.listen((e) => e.preventDefault()));
+    _subscriptions.add(html.document.onDrop.listen((e) => e.preventDefault()));
+    _startDevToolsDetection();
+  }
+
+  void _startDevToolsDetection() {
+    _devToolsTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      try {
+        js.context.callMethod('eval', [
+          '''
+          (function() {
+            var devtools = false;
+            var threshold = 160;
+            if (window.outerWidth - window.innerWidth > threshold ||
+                window.outerHeight - window.innerHeight > threshold) {
+              devtools = true;
+            }
+            window.__devtools_open = devtools;
+          })();
+          '''
+        ]);
+
+        final isOpen = js.context['__devtools_open'] as bool? ?? false;
+
+        if (isOpen && mounted && !_devToolsDetected) {
+          setState(() => _devToolsDetected = true);
+          _showWarning('Developer tools detected! Close them to continue.');
+        } else if (!isOpen && mounted && _devToolsDetected) {
+          setState(() => _devToolsDetected = false);
+        }
+      } catch (e) {
+        debugPrint('DevTools detection error: $e');
+      }
+    });
+  }
+
+  void _removeAllProtections() {
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    _subscriptions.clear();
+    _protectionStyle?.remove();
+    _devToolsTimer?.cancel();
+  }
+
+  void _showWarning(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.shield_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(child: Text('⚠️ $message', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
+          ],
+        ),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Widget _buildWatermarkText(String text, double angle) {
@@ -39,8 +225,8 @@ class _QuestionScreenState extends State<QuestionScreen> {
       child: Text(
         text,
         style: TextStyle(
-          color: const Color(0xFF00FFD4).withOpacity(0.08),
-          fontSize: 11,
+          color: Colors.black.withOpacity(0.19),
+          fontSize: 12,
           fontWeight: FontWeight.bold,
           fontFamily: 'monospace',
         ),
@@ -82,12 +268,42 @@ class _QuestionScreenState extends State<QuestionScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _removeAllProtections();
     _pageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_devToolsDetected) {
+      return Scaffold(
+        backgroundColor: Colors.red.shade50,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.dangerous_rounded, size: 60, color: Colors.red),
+              const SizedBox(height: 20),
+              const Text(
+                '⚠️ Developer Tools Detected',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Please close Developer Tools to continue.',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.sectionName),
@@ -133,61 +349,83 @@ class _QuestionScreenState extends State<QuestionScreen> {
           }
 
           final questions = snapshot.data!;
-          final user = _supabase.auth.currentUser;
-          final studentInfo = "${user?.userMetadata?['full_name'] ?? 'Student'} • ${user?.email ?? ''}";
+          final studentInfo =
+              "$_studentName • $_studentEmail • ${DateTime.now().toString().split(' ')[0]}";
 
           return Stack(
             children: [
-              // === 🛡️ Turqoise Text Watermark ===
+              // المحتوى الأصلي (يجب أن يكون الأول في الـ Stack ليكون تحت العلامات المائية)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildTopControls(questions.length),
+                  Expanded(
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: questions.length,
+                      // ✅ الصفحات المجاورة تتحمل مسبقاً = صور أسرع
+                      allowImplicitScrolling: true,
+                      itemBuilder: (context, index) {
+                        return _buildQuestionLayout(questions[index]);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+
+              // === 🛡️ WATERMARK LAYER (Text and Logo) ===
               Positioned.fill(
                 child: IgnorePointer(
                   child: Stack(
                     children: [
+                      // --- Logo Watermark In Center ---
+                      Positioned.fill(
+                        child: Center(
+                          child: Opacity(
+                            opacity: 0.25, // تم زيادتها بناءً على طلب المستخدم
+                            child: Image.asset(
+                              'assets/logo.jpg',
+                              fit: BoxFit.scaleDown,
+                              width: 300, // ✅ تم مضاعفة الحجم
+                              height: 300,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // --- Text Watermarks ---
                       Positioned(
-                          top: 40,
-                          left: 20,
-                          child: _buildWatermarkText(studentInfo, -0.2)),
+                        top: 20,
+                        left: 20,
+                        child: _buildWatermarkText(studentInfo, -0.3),
+                      ),
                       Positioned(
-                          top: 100,
-                          right: 20,
-                          child: _buildWatermarkText(studentInfo, 0.15)),
+                        top: 50,
+                        right: 30,
+                        child: _buildWatermarkText(studentInfo, 0.2),
+                      ),
                       Positioned(
-                          top: MediaQuery.of(context).size.height * 0.4,
-                          left: 10,
-                          child: _buildWatermarkText(studentInfo, -0.1)),
+                        top: MediaQuery.of(context).size.height * 0.45,
+                        left: 10,
+                        child: _buildWatermarkText(studentInfo, -0.1),
+                      ),
                       Positioned(
-                          bottom: 150,
-                          left: 30,
-                          child: _buildWatermarkText(studentInfo, -0.1)),
+                        bottom: 180,
+                        left: 40,
+                        child: _buildWatermarkText(studentInfo, -0.2),
+                      ),
                       Positioned(
-                          bottom: 50,
-                          right: 20,
-                          child: _buildWatermarkText(studentInfo, 0.2)),
+                        bottom: 40,
+                        right: 20,
+                        child: _buildWatermarkText(studentInfo, 0.15),
+                      ),
                       Align(
-                          alignment: Alignment.center,
-                          child: _buildWatermarkText(studentInfo, 0.0)),
+                        alignment: Alignment.center,
+                        child: _buildWatermarkText(studentInfo, 0.0),
+                      ),
                     ],
                   ),
                 ),
               ),
-              // المحتوى الأصلي
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-              _buildTopControls(questions.length),
-              Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: questions.length,
-                  // ✅ الصفحات المجاورة تتحمل مسبقاً = صور أسرع
-                  allowImplicitScrolling: true,
-                  itemBuilder: (context, index) {
-                    return _buildQuestionLayout(questions[index]);
-                  },
-                ),
-              ),
-            ],
-          ),
             ],
           );
         },

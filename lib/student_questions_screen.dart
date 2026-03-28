@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wael_mcp/api_service.dart';
 import 'dart:html' as html;
 import 'dart:js' as js;
 import 'dart:async';
@@ -181,7 +182,9 @@ class _QuestionScreenState extends State<QuestionScreen>
     with WidgetsBindingObserver {
   String? selectedAnswer;
   final TextEditingController _controller = TextEditingController();
-  final _supabase = Supabase.instance.client;
+  
+  String _studentName = 'طالب';
+  String _studentEmail = '';
 
   // 🛡️ Protection variables
   final List<StreamSubscription> _subscriptions = [];
@@ -352,13 +355,12 @@ class _QuestionScreenState extends State<QuestionScreen>
     );
   }
 
-  Widget _buildWatermarkText(String text, double angle) {
     return Transform.rotate(
       angle: angle,
       child: Text(
         text,
         style: TextStyle(
-          color: const Color(0xFF00FFD4).withOpacity(0.19), // ✅ تم زيادة الشفافية إلى 0.19
+          color: Colors.black.withOpacity(0.19), // ✅ اللون الأسود
           fontSize: 12,
           fontWeight: FontWeight.bold,
           fontFamily: 'monospace',
@@ -373,6 +375,21 @@ class _QuestionScreenState extends State<QuestionScreen>
     WidgetsBinding.instance.addObserver(this);
     _injectGlobalProtectionCSS();
     _enableAllProtections();
+    _loadStudentProfile();
+  }
+
+  Future<void> _loadStudentProfile() async {
+    try {
+      final profile = await ApiService.getProfile();
+      if (mounted) {
+        setState(() {
+          _studentName = profile['full_name'] ?? 'طالب';
+          _studentEmail = profile['email'] ?? '';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading profile for watermark: $e');
+    }
   }
 
   @override
@@ -385,9 +402,8 @@ class _QuestionScreenState extends State<QuestionScreen>
 
   @override
   Widget build(BuildContext context) {
-    final user = _supabase.auth.currentUser;
     final studentInfo =
-        "${user?.userMetadata?['full_name'] ?? 'Student'} • ${user?.email ?? ''} • ${DateTime.now().toString().split(' ')[0]}";
+        "$_studentName • $_studentEmail • ${DateTime.now().toString().split(' ')[0]}";
 
     if (_devToolsDetected) {
       return Scaffold(
@@ -422,46 +438,7 @@ class _QuestionScreenState extends State<QuestionScreen>
       body: SafeArea(
         child: Stack(
           children: [
-            // === 🛡️ WATERMARK LAYER (Text) ===
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Stack(
-                  children: [
-                    Positioned(
-                      top: 20,
-                      left: 20,
-                      child: _buildWatermarkText(studentInfo, -0.3),
-                    ),
-                    Positioned(
-                      top: 40,
-                      right: 30,
-                      child: _buildWatermarkText(studentInfo, 0.2),
-                    ),
-                    Positioned(
-                      top: MediaQuery.of(context).size.height * 0.4,
-                      left: 10,
-                      child: _buildWatermarkText(studentInfo, -0.1),
-                    ),
-                    Positioned(
-                      bottom: 80,
-                      left: 40,
-                      child: _buildWatermarkText(studentInfo, -0.2),
-                    ),
-                    Positioned(
-                      bottom: 40,
-                      right: 20,
-                      child: _buildWatermarkText(studentInfo, 0.15),
-                    ),
-                    Align(
-                      alignment: Alignment.center,
-                      child: _buildWatermarkText(studentInfo, 0.0),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // المحتوى الأصلي
+            // المحتوى الأصلي (يجب أن يكون الأول ليكون تحت العلامات المائية)
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -554,6 +531,60 @@ class _QuestionScreenState extends State<QuestionScreen>
                     ),
                   ),
                 ],
+              ),
+            ),
+
+            // === 🛡️ WATERMARK LAYER (Text and Logo) ===
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Stack(
+                  children: [
+                    // --- Logo Watermark In Center ---
+                    Positioned.fill(
+                      child: Center(
+                        child: Opacity(
+                          opacity: 0.25, // تم زيادتها بناءً على طلب المستخدم
+                          child: Image.asset(
+                            'assets/logo.jpg',
+                            fit: BoxFit.scaleDown,
+                            width: 300, // ✅ تم مضاعفة الحجم
+                            height: 300,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // --- Text Watermarks ---
+                    Positioned(
+                      top: 20,
+                      left: 20,
+                      child: _buildWatermarkText(studentInfo, -0.3),
+                    ),
+                    Positioned(
+                      top: 40,
+                      right: 30,
+                      child: _buildWatermarkText(studentInfo, 0.2),
+                    ),
+                    Positioned(
+                      top: MediaQuery.of(context).size.height * 0.4,
+                      left: 10,
+                      child: _buildWatermarkText(studentInfo, -0.1),
+                    ),
+                    Positioned(
+                      bottom: 80,
+                      left: 40,
+                      child: _buildWatermarkText(studentInfo, -0.2),
+                    ),
+                    Positioned(
+                      bottom: 40,
+                      right: 20,
+                      child: _buildWatermarkText(studentInfo, 0.15),
+                    ),
+                    Align(
+                      alignment: Alignment.center,
+                      child: _buildWatermarkText(studentInfo, 0.0),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
