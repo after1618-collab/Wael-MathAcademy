@@ -177,11 +177,27 @@ class QuestionScreen extends StatefulWidget {
 class _QuestionScreenState extends State<QuestionScreen> {
   String? selectedAnswer;
   final TextEditingController _controller = TextEditingController();
+  final _supabase = Supabase.instance.client;
 
   List<String> getOptions() {
     final baseOptions = ["A", "B", "C", "D"];
     if (widget.allowE) baseOptions.add("E");
     return baseOptions;
+  }
+
+  Widget _buildWatermarkText(String text, double angle) {
+    return Transform.rotate(
+      angle: angle,
+      child: Text(
+        text,
+        style: TextStyle(
+          color: const Color(0xFF00FFD4).withOpacity(0.08), // ✅ لون أخضر تركواز شفاف
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'monospace',
+        ),
+      ),
+    );
   }
 
   @override
@@ -192,91 +208,59 @@ class _QuestionScreenState extends State<QuestionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = _supabase.auth.currentUser;
+    final studentInfo = "${user?.userMetadata?['full_name'] ?? 'Student'} • ${user?.email ?? ''} • ${DateTime.now().toString().split(' ')[0]}";
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       body: SafeArea(
         child: Stack(
           children: [
-            // === 🎨 DYNAMIC WATERMARK LAYER (Multi-Position Protection) ===
+            // === 🛡️ ADVANCED TEXT WATERMARK LAYER (Same as Video) ===
             Positioned.fill(
-              child: IgnorePointer( // ✅ يضمن عدم تداخل العلامات المائية مع أزرار الإجابة
+              child: IgnorePointer(
                 child: Stack(
                   children: [
-                    // 1. Top-left
+                    // Top-left
                     Positioned(
                       top: 20,
                       left: 20,
-                      child: Opacity(
-                        opacity: 0.08, // ✅ خفيف جداً لمنع التشتيت
-                        child: Transform.rotate(
-                          angle: -0.3,
-                          child: Image.asset(
-                            'assets/logo.jpg',
-                            width: 120,
-                            height: 120,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
+                      child: _buildWatermarkText(studentInfo, -0.3),
                     ),
-                    // 2. Top-right
+                    // Top-right
                     Positioned(
                       top: 40,
                       right: 30,
-                      child: Opacity(
-                        opacity: 0.07,
-                        child: Transform.rotate(
-                          angle: 0.25,
-                          child: Image.asset(
-                            'assets/logo.jpg',
-                            width: 100,
-                            height: 100,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
+                      child: _buildWatermarkText(studentInfo, 0.2),
                     ),
-                    // 3. Bottom-left
+                    // Middle-left
                     Positioned(
-                      bottom: 50,
-                      left: 40,
-                      child: Opacity(
-                        opacity: 0.06,
-                        child: Transform.rotate(
-                          angle: -0.15,
-                          child: Image.asset(
-                            'assets/logo.jpg',
-                            width: 110,
-                            height: 110,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
+                      top: MediaQuery.of(context).size.height * 0.4,
+                      left: 10,
+                      child: _buildWatermarkText(studentInfo, -0.1),
                     ),
-                    // 4. Center (subtle)
+                    // Bottom-left
+                    Positioned(
+                      bottom: 80,
+                      left: 40,
+                      child: _buildWatermarkText(studentInfo, -0.2),
+                    ),
+                    // Bottom-right
+                    Positioned(
+                      bottom: 40,
+                      right: 20,
+                      child: _buildWatermarkText(studentInfo, 0.15),
+                    ),
+                    // Center
                     Align(
                       alignment: Alignment.center,
-                      child: Opacity(
-                        opacity: 0.05,
-                        child: Transform.rotate(
-                          angle: 0.1,
-                          child: Image.asset(
-                            'assets/logo.jpg',
-                            width: 150,
-                            height: 150,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
+                      child: _buildWatermarkText(studentInfo, 0.0),
                     ),
                   ],
                 ),
               ),
             ),
-                  ),
-                ),
-              ),
-            ),
+
             // المحتوى الأصلي
             Padding(
               padding: const EdgeInsets.all(16.0),

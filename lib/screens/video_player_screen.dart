@@ -482,8 +482,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           final watermark = html.DivElement()
             ..style.position = 'absolute'
             ..style.opacity = '0.08'
-            ..style.color = 'white'
-            ..style.fontSize = '14px'
+            ..style.color = '= '14px'
             ..style.fontWeight = 'bold'
             ..style.fontFamily = 'monospace'
             ..style.transform = 'rotate(-${25 + random.nextInt(15)}deg)'
