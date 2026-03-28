@@ -116,9 +116,26 @@ class _QuestionScreenState extends State<QuestionScreen> {
           }
 
           final questions = snapshot.data!;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          return Stack(
             children: [
+              // العلامة المائية للوجو (شفافة ولا تعيق الضغط)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: 0.15,
+                    child: Center(
+                      child: Image.asset(
+                        'assets/logo.jpg',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // المحتوى الأصلي
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
               _buildTopControls(questions.length),
               Expanded(
                 child: PageView.builder(
@@ -216,24 +233,29 @@ class _QuestionScreenState extends State<QuestionScreen> {
               ),
               clipBehavior: Clip.antiAlias,
               child: imageUrl != null
-                  ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.contain,
-                      // ✅ تحسين أداء الصور
-                      cacheWidth: 800,
-                      loadingBuilder: (context, child, progress) =>
-                          progress == null
-                              ? child
-                              : Center(
-                                  child: CircularProgressIndicator(
-                                    value: progress.expectedTotalBytes != null
-                                        ? progress.cumulativeBytesLoaded /
-                                            progress.expectedTotalBytes!
-                                        : null,
+                  ? InteractiveViewer(
+                      panEnabled: true,
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      child: Image.network(
+                        imageUrl,
+                        fit: BoxFit.contain,
+                        // ✅ تحسين أداء الصور
+                        cacheWidth: 800,
+                        loadingBuilder: (context, child, progress) =>
+                            progress == null
+                                ? child
+                                : Center(
+                                    child: CircularProgressIndicator(
+                                      value: progress.expectedTotalBytes != null
+                                          ? progress.cumulativeBytesLoaded /
+                                              progress.expectedTotalBytes!
+                                          : null,
+                                    ),
                                   ),
-                                ),
-                      errorBuilder: (context, error, stackTrace) =>
-                          _buildImageError(),
+                        errorBuilder: (context, error, stackTrace) =>
+                            _buildImageError(),
+                      ),
                     )
                   : _buildImageError(message: 'No image for this question'),
             ),

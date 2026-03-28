@@ -195,24 +195,46 @@ class _QuestionScreenState extends State<QuestionScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
+        child: Stack(
+          children: [
+            // العلامة المائية للوجو (شفافة ولا تعيق الضغط)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: 0.15,
+                  child: Center(
+                    child: Image.asset(
+                      'assets/logo.jpg',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // المحتوى الأصلي
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
             children: [
               Expanded(
                 flex: 5,
                 child: Center(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      widget.questionImage,
-                      fit: BoxFit.contain,
-                      loadingBuilder: (context, child, progress) =>
-                          progress == null
-                              ? child
-                              : const Center(child: CircularProgressIndicator()),
-                      errorBuilder: (context, error, stack) =>
-                          const Center(child: Icon(Icons.error)),
+                    child: InteractiveViewer(
+                      panEnabled: true,
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      child: Image.network(
+                        widget.questionImage,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, child, progress) =>
+                            progress == null
+                                ? child
+                                : const Center(child: CircularProgressIndicator()),
+                        errorBuilder: (context, error, stack) =>
+                            const Center(child: Icon(Icons.error)),
+                      ),
                     ),
                   ),
                 ),
