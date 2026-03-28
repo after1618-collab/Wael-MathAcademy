@@ -197,16 +197,82 @@ class _QuestionScreenState extends State<QuestionScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // العلامة المائية للوجو (شفافة ولا تعيق الضغط)
+            // === 🎨 DYNAMIC WATERMARK LAYER (Multi-Position Protection) ===
             Positioned.fill(
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: 0.15,
-                  child: Center(
-                    child: Image.asset(
-                      'assets/logo.jpg',
-                      fit: BoxFit.contain,
+              child: IgnorePointer( // ✅ يضمن عدم تداخل العلامات المائية مع أزرار الإجابة
+                child: Stack(
+                  children: [
+                    // 1. Top-left
+                    Positioned(
+                      top: 20,
+                      left: 20,
+                      child: Opacity(
+                        opacity: 0.08, // ✅ خفيف جداً لمنع التشتيت
+                        child: Transform.rotate(
+                          angle: -0.3,
+                          child: Image.asset(
+                            'assets/logo.jpg',
+                            width: 120,
+                            height: 120,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
                     ),
+                    // 2. Top-right
+                    Positioned(
+                      top: 40,
+                      right: 30,
+                      child: Opacity(
+                        opacity: 0.07,
+                        child: Transform.rotate(
+                          angle: 0.25,
+                          child: Image.asset(
+                            'assets/logo.jpg',
+                            width: 100,
+                            height: 100,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 3. Bottom-left
+                    Positioned(
+                      bottom: 50,
+                      left: 40,
+                      child: Opacity(
+                        opacity: 0.06,
+                        child: Transform.rotate(
+                          angle: -0.15,
+                          child: Image.asset(
+                            'assets/logo.jpg',
+                            width: 110,
+                            height: 110,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 4. Center (subtle)
+                    Align(
+                      alignment: Alignment.center,
+                      child: Opacity(
+                        opacity: 0.05,
+                        child: Transform.rotate(
+                          angle: 0.1,
+                          child: Image.asset(
+                            'assets/logo.jpg',
+                            width: 150,
+                            height: 150,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
                   ),
                 ),
               ),
