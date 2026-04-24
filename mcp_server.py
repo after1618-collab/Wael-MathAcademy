@@ -133,6 +133,11 @@ def get_admin_access(x_api_key: str = Header(..., description="Admin's secret AP
 # Endpoints
 # -----------------------------
 
+@app.get("/google0e59f1440c6a05bd.html", include_in_schema=False)
+def serve_google_verification():
+    """خدمة ملف التحقق من Google Search Console"""
+    return FileResponse(os.path.join(script_dir, "google0e59f1440c6a05bd.html"))
+
 # --- Session Management ---
 @app.post("/sessions/login", summary="Student login and session creation")
 def login_and_create_session(data: SessionLogin):
@@ -1104,7 +1109,12 @@ def admin_watch_report(_: bool = Depends(get_admin_access)):
 # -----------------------------
 # Static Files (Web Build)
 # -----------------------------
-app.mount("/", StaticFiles(directory="build/web", html=True), name="static")
+_static_dir = os.path.join(script_dir, "build", "web")
+
+if os.path.isdir(_static_dir):
+    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
+else:
+    print(f"⚠️ Static files not found at: {_static_dir} — Skipping static mount.")
 
 # -----------------------------
 # Run (للتجربة المحلية فقط)

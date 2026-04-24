@@ -360,14 +360,50 @@ class _QuestionScreenState extends State<QuestionScreen>
       child: Text(
         text,
         style: TextStyle(
-          color: Colors.black.withOpacity(0.19), // ✅ اللون الأسود
-          fontSize: 12,
+          color: Colors.black.withOpacity(0.12),
+          fontSize: 16,
           fontWeight: FontWeight.bold,
           fontFamily: 'monospace',
         ),
       ),
     );
   }
+}
+
+class WatermarkPainter extends CustomPainter {
+  final String text;
+  WatermarkPainter(this.text);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final textStyle = TextStyle(
+      color: Colors.black.withOpacity(0.10),
+      fontSize: 15,
+      fontWeight: FontWeight.bold,
+    );
+    final textPainter = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+
+    final double stepX = textPainter.width + 120;
+    final double stepY = textPainter.height + 180;
+
+    for (double x = -100; x < size.width + 100; x += stepX) {
+      for (double y = -100; y < size.height + 100; y += stepY) {
+        canvas.save();
+        canvas.translate(x, y);
+        canvas.rotate(-0.35);
+        textPainter.paint(canvas, Offset.zero);
+        canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(WatermarkPainter oldDelegate) => oldDelegate.text != text;
+}
 
   @override
   void initState() {
@@ -539,104 +575,35 @@ class _QuestionScreenState extends State<QuestionScreen>
               child: IgnorePointer(
                 child: Stack(
                   children: [
-                    // --- Logo Watermark In Center ---
+                    // 1. Repeating Text Watermark Pattern
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: WatermarkPainter(studentInfo),
+                      ),
+                    ),
+                    
+                    // 2. Logo Watermark (Dynamic Size)
                     Positioned.fill(
                       child: Center(
                         child: Opacity(
-                          opacity: 0.15, // ✅ تقليل الشفافية إلى 0.15
+                          opacity: 0.12,
                           child: Image.asset(
                             'assets/logo.jpg',
-                            fit: BoxFit.scaleDown,
-                            width: 600, // ✅ تم مضاعفة الحجم إلى 600
-                            height: 600,
+                            fit: BoxFit.contain,
+                            width: MediaQuery.of(context).size.width * 0.7,
+                            height: MediaQuery.of(context).size.height * 0.7,
                           ),
                         ),
                       ),
                     ),
-                    // --- Text Watermarks ---
-                    // 1. Triple Central Watermarks (Requested: Top, Center, Bottom)
+
+                    // 3. Static Center-Top Watermark (Always visible)
                     Align(
                       alignment: Alignment.topCenter,
                       child: Padding(
-                        padding: const EdgeInsets.only(top: 80),
+                        padding: const EdgeInsets.only(top: 100),
                         child: _buildWatermarkText(studentInfo, 0.0),
                       ),
-                    ),
-                    Align(
-                      alignment: Alignment.center,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 100), // ✅ رفعها للأعلى (حوالي 3 سم)
-                        child: _buildWatermarkText(studentInfo, 0.0),
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 220), // ✅ رفعها للأعلى (حوالي 3 سم إضافي)
-                        child: _buildWatermarkText(studentInfo, 0.0),
-                      ),
-                    ),
-
-                    // 2. Extra Corner and Intermediate Watermarks for protection
-                    Positioned(
-                      top: 20,
-                      left: 20,
-                      child: _buildWatermarkText(studentInfo, -0.3),
-                    ),
-                    Positioned(
-                      top: 40,
-                      right: 30,
-                      child: _buildWatermarkText(studentInfo, 0.2),
-                    ),
-                    Positioned(
-                      top: MediaQuery.of(context).size.height * 0.25,
-                      left: 50,
-                      child: _buildWatermarkText(studentInfo, 0.1),
-                    ),
-                    Positioned(
-                      top: MediaQuery.of(context).size.height * 0.25,
-                      right: 50,
-                      child: _buildWatermarkText(studentInfo, -0.15),
-                    ),
-                    Positioned(
-                      top: MediaQuery.of(context).size.height * 0.4,
-                      left: 10,
-                      child: _buildWatermarkText(studentInfo, -0.1),
-                    ),
-                    Positioned(
-                      top: MediaQuery.of(context).size.height * 0.4,
-                      right: 10,
-                      child: _buildWatermarkText(studentInfo, 0.12),
-                    ),
-                    Positioned(
-                      top: MediaQuery.of(context).size.height * 0.6,
-                      left: 60,
-                      child: _buildWatermarkText(studentInfo, 0.25),
-                    ),
-                    Positioned(
-                      top: MediaQuery.of(context).size.height * 0.6,
-                      right: 60,
-                      child: _buildWatermarkText(studentInfo, -0.2),
-                    ),
-                    Positioned(
-                      bottom: 80,
-                      left: 40,
-                      child: _buildWatermarkText(studentInfo, -0.2),
-                    ),
-                    Positioned(
-                      bottom: 80,
-                      right: 40,
-                      child: _buildWatermarkText(studentInfo, 0.3),
-                    ),
-                    Positioned(
-                      bottom: 40,
-                      right: 20,
-                      child: _buildWatermarkText(studentInfo, 0.15),
-                    ),
-                    Positioned(
-                      bottom: 40,
-                      left: 20,
-                      child: _buildWatermarkText(studentInfo, -0.12),
                     ),
                   ],
                 ),

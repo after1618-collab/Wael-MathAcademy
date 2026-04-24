@@ -13,6 +13,16 @@ from dataclasses import dataclass
 from typing import List
 from io import BytesIO
 
+# ── Drag-and-drop support (optional dependency) ──────────────────────────
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+    HAS_DND = True
+except ImportError:
+    HAS_DND = False
+    DND_FILES = None
+    logging.info("tkinterdnd2 not installed – drag-and-drop disabled.")
+    logging.info("  Install with: pip install tkinterdnd2")
+
 try:
     from PIL import Image, ImageTk
     PIL_AVAILABLE = True
@@ -28,7 +38,7 @@ class AppConfig:
     page_size: int = 20
     video_bucket: str = "videos"
     thumbnail_bucket: str = "videos"  # Same bucket, different folder
-    max_video_size: int = 500 * 1024 * 1024  # 500MB
+    max_video_size: int = 50 * 1024 * 1024  # 50MB (Supabase Free Tier Limit)
     allowed_video_ext: List[str] = None
 
     def __post_init__(self):
@@ -51,6 +61,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 config = AppConfig()
 supabase: Client = create_client(config.supabase_url, config.supabase_key)
 
+# --- CONSTANTS ---
+CONTENT_TYPES = {
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+    '.mkv': 'video/x-matroska'
+}
+
 
 # --- MAIN APP ---
 class VideoManagerApp:
@@ -58,7 +77,14 @@ class VideoManagerApp:
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
 
-        self.app = ctk.CTk()
+        # Use TkinterDnD-aware root when the library is available
+        if HAS_DND:
+            self.app = TkinterDnD.Tk()
+            # Re-apply customtkinter theme after TkinterDnD.Tk() creation
+            ctk.set_appearance_mode("System")
+            ctk.set_default_color_theme("blue")
+        else:
+            self.app = ctk.CTk()
         self.app.geometry("1300x850")
         self.app.title("🎬 Video & Course Manager")
 
@@ -71,6 +97,8 @@ class VideoManagerApp:
         self.current_page = 1
         self.display_job = None
         self.upload_in_progress = False
+        self.order_changed = False
+        self._search_after_id = None
 
         # Build UI
         self.setup_ui()
@@ -80,12 +108,24 @@ class VideoManagerApp:
     # UI SETUP
     # ===========================
     def setup_ui(self):
+        # Status bar at the bottom
+        status_bar = ctk.CTkFrame(self.app, height=28, corner_radius=0)
+        status_bar.pack(fill="x", side="bottom")
+        status_bar.pack_propagate(False)
+        self.status_label = ctk.CTkLabel(
+            status_bar, text="✅ جاهز", font=("", 11), anchor="w"
+        )
+        self.status_label.pack(side="left", padx=10)
+
         self.main_container = ctk.CTkFrame(self.app)
         self.main_container.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.setup_courses_panel()
         self.setup_lessons_panel()
         self.setup_bottom_bar()
+
+    def set_status(self, msg, color="gray"):
+        self.app.after(0, lambda: self.status_label.configure(text=msg, text_color=color))
 
     def setup_courses_panel(self):
         left_frame = ctk.CTkFrame(self.main_container, width=350)
@@ -159,9 +199,23 @@ class VideoManagerApp:
         # Hidden initially
         # self.upload_progress_frame.pack(...)
 
+        # Drag-and-drop zone hint label (shown only when DnD is available)
+        if HAS_DND:
+            self.dnd_hint_label = ctk.CTkLabel(
+                right_frame,
+                text="📂 اسحب ملفات الفيديو هنا للرفع التلقائي  (Drag & Drop videos here)",
+                font=("", 12), text_color="gray",
+                fg_color=("gray90", "gray18"), corner_radius=8
+            )
+            self.dnd_hint_label.pack(fill="x", padx=5, pady=(0, 4))
+
         # Lessons list
         self.lessons_frame = ctk.CTkScrollableFrame(right_frame)
         self.lessons_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Register drag-and-drop on the main window after widgets are ready
+        if HAS_DND:
+            self.app.after(100, self._setup_drag_drop)
 
     def setup_bottom_bar(self):
         bottom = ctk.CTkFrame(self.app)
@@ -333,7 +387,13 @@ class VideoManagerApp:
 
         def worker():
             try:
-                # Step 1: Generate unique storage path
+                # Step 1: Get next sort order from DB
+                max_res = supabase.table("lessons").select("sort_order")\
+                    .eq("course_id", self.selected_course_id)\
+                    .order("sort_order", desc=True).limit(1).execute()
+                next_order = (max_res.data[0]["sort_order"] + 1) if max_res.data else 0
+
+                # Step 2: Generate unique storage path
                 import uuid
                 file_ext = os.path.splitext(filename)[1]
                 unique_name = f"{uuid.uuid4().hex}{file_ext}"
@@ -342,24 +402,14 @@ class VideoManagerApp:
 
                 file_size = os.path.getsize(file_path)
 
-                # Step 2: Upload to Supabase Storage
-                self.app.after(0, lambda: self.update_upload_progress(0.1, f"📤 Uploading: {filename} ..."))
+                # Step 3: Upload to Supabase Storage
+                self.app.after(0, lambda: self.update_upload_progress(0.1, f"📤 جارٍ التحميل: {filename} ..."))
 
-                # Read file and upload
                 with open(file_path, "rb") as f:
                     file_data = f.read()
 
-                # Determine content type
-                content_types = {
-                    '.mp4': 'video/mp4',
-                    '.webm': 'video/webm',
-                    '.mov': 'video/quicktime',
-                    '.avi': 'video/x-msvideo',
-                    '.mkv': 'video/x-matroska'
-                }
-                content_type = content_types.get(file_ext.lower(), 'video/mp4')
-
-                self.app.after(0, lambda: self.update_upload_progress(0.3, f"📤 Uploading to storage..."))
+                content_type = CONTENT_TYPES.get(file_ext.lower(), 'video/mp4')
+                self.app.after(0, lambda: self.update_upload_progress(0.4, f"📤 جارٍ الرفع إلى التخزين..."))
 
                 supabase.storage.from_(config.video_bucket).upload(
                     storage_path,
@@ -367,14 +417,11 @@ class VideoManagerApp:
                     {"content-type": content_type, "x-upsert": "true"}
                 )
 
-                self.app.after(0, lambda: self.update_upload_progress(0.7, "✅ Upload complete! Getting URL..."))
+                self.app.after(0, lambda: self.update_upload_progress(0.8, "✅ اكتمل الرفع! يتم الحفظ..."))
 
-                # Step 3: Get the public URL
                 video_url = supabase.storage.from_(config.video_bucket).get_public_url(storage_path)
 
-                self.app.after(0, lambda: self.update_upload_progress(0.85, "💾 Creating lesson record..."))
-
-                # Step 4: Create lesson in database
+                # Step 4: Create lesson record
                 supabase.table("lessons").insert({
                     "course_id": course_id,
                     "title": lesson_data["title"],
@@ -382,29 +429,27 @@ class VideoManagerApp:
                     "video_url": video_url,
                     "video_type": "direct",
                     "duration_minutes": lesson_data.get("duration_minutes"),
-                    "sort_order": lesson_data.get("sort_order", 0),
+                    "sort_order": next_order,
                     "is_published": lesson_data.get("is_published", True),
                     "is_free": lesson_data.get("is_free", False)
                 }).execute()
 
-                self.app.after(0, lambda: self.update_upload_progress(1.0, "✅ Done!"))
-
+                self.app.after(0, lambda: self.update_upload_progress(1.0, "✅ تم بنجاح!"))
+                
                 time.sleep(1)
 
                 def on_complete():
                     self.hide_upload_progress()
-                    messagebox.showinfo("Success", f"Video '{lesson_data['title']}' uploaded successfully!\n\nFile: {filename}\nSize: {file_size / (1024*1024):.1f} MB")
+                    messagebox.showinfo("✅ تم الرفع", 
+                        f"تم بنجاح رفع: {lesson_data['title']}\n"
+                        f"الحجم: {file_size / (1024*1024):.1f} MB")
                     self.refresh_lessons()
                     self.load_courses()
 
                 self.app.after(0, on_complete)
 
             except Exception as e:
-                logging.error(f"Upload failed: {e}")
-                def on_error():
-                    self.hide_upload_progress()
-                    self.show_error("Upload failed", e)
-                self.app.after(0, on_error)
+                self.app.after(0, lambda: [self.hide_upload_progress(), self.show_error("فشل رفع الملف", e)])
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -452,6 +497,18 @@ class VideoManagerApp:
         def worker():
             import uuid
             total = len(valid_files)
+            succeeded = 0
+            failed_files = []
+            
+            # Accurate sort order for batch
+            try:
+                max_res = supabase.table("lessons").select("sort_order")\
+                    .eq("course_id", self.selected_course_id)\
+                    .order("sort_order", desc=True).limit(1).execute()
+                next_order = (max_res.data[0]["sort_order"] + 1) if max_res.data else 0
+            except:
+                next_order = 0
+
             for i, file_path in enumerate(valid_files):
                 try:
                     filename = os.path.basename(file_path)
@@ -459,17 +516,11 @@ class VideoManagerApp:
                     unique_name = f"{uuid.uuid4().hex}{file_ext}"
                     storage_path = f"courses/{self.selected_course_id}/{unique_name}"
 
-                    progress = i / total
-                    self.app.after(0, lambda p=progress, fn=filename: self.update_upload_progress(
-                        p, f"📤 [{i+1}/{total}] Uploading: {fn}"
-                    ))
+                    progress = (i + 1) / total
+                    self.app.after(0, lambda p=progress, fn=filename, cur=i+1:
+                        self.update_upload_progress(p, f"📤 [{cur}/{total}] {fn}"))
 
-                    content_types = {
-                        '.mp4': 'video/mp4', '.webm': 'video/webm',
-                        '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
-                        '.mkv': 'video/x-matroska'
-                    }
-                    content_type = content_types.get(file_ext.lower(), 'video/mp4')
+                    content_type = CONTENT_TYPES.get(file_ext.lower(), 'video/mp4')
 
                     with open(file_path, "rb") as f:
                         file_data = f.read()
@@ -480,7 +531,6 @@ class VideoManagerApp:
                     )
 
                     video_url = supabase.storage.from_(config.video_bucket).get_public_url(storage_path)
-
                     auto_title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
 
                     supabase.table("lessons").insert({
@@ -488,20 +538,25 @@ class VideoManagerApp:
                         "title": auto_title,
                         "video_url": video_url,
                         "video_type": "direct",
-                        "sort_order": len(self.current_lessons) + i,
+                        "sort_order": next_order + i,
                         "is_published": True,
                         "is_free": False
                     }).execute()
+                    succeeded += 1
 
                 except Exception as e:
-                    logging.error(f"Failed to upload {filename}: {e}")
+                    logging.error(f"Failed to upload {filename}: {e}", exc_info=True)
+                    failed_files.append(f"{filename}: {e}")
 
-            self.app.after(0, lambda: self.update_upload_progress(1.0, "✅ All uploads complete!"))
+            self.app.after(0, lambda: self.update_upload_progress(1.0, "✅ اكتملت جميع الرفوعات!"))
             time.sleep(1)
 
-            def on_complete():
+            def on_complete(s=succeeded, f=failed_files):
                 self.hide_upload_progress()
-                messagebox.showinfo("Done", f"Uploaded {total} videos!")
+                if not f:
+                    messagebox.showinfo("✅ تم الرفع", f"تم رفع جميع الملفات ({s}) بنجاح.")
+                else:
+                    messagebox.showwarning("⚠️ اكتمل بنجاح جزئي", f"تم رفع {s} وفشل {len(f)} ملفات.")
                 self.refresh_lessons()
                 self.load_courses()
             self.app.after(0, on_complete)
@@ -516,14 +571,26 @@ class VideoManagerApp:
             try:
                 resp = supabase.table("courses").select("*").order("sort_order").execute()
                 courses = resp.data or []
-                for course in courses:
-                    count_resp = supabase.table("lessons").select(
-                        "id", count="exact"
-                    ).eq("course_id", course["id"]).execute()
-                    course["lesson_count"] = count_resp.count or 0
+
+                if courses:
+                    # Optimized: Single query for all counts instead of N queries
+                    ids = [c["id"] for c in courses]
+                    counts_resp = supabase.table("lessons")\
+                        .select("course_id")\
+                        .in_("course_id", ids)\
+                        .execute()
+
+                    count_map = {}
+                    for row in (counts_resp.data or []):
+                        cid = row["course_id"]
+                        count_map[cid] = count_map.get(cid, 0) + 1
+
+                    for course in courses:
+                        course["lesson_count"] = count_map.get(course["id"], 0)
+
                 self.app.after(0, lambda: self._display_courses(courses))
             except Exception as e:
-                self.app.after(0, lambda: self.show_error("Failed to load courses", e))
+                self.app.after(0, lambda: self.show_error("فشل تحميل الكورسات", e))
         threading.Thread(target=worker, daemon=True).start()
 
     def _display_courses(self, courses):
@@ -588,12 +655,16 @@ class VideoManagerApp:
         ctk.CTkButton(btn_frame, text="🗑️", width=30, height=25, fg_color="red", command=lambda c=course: self.delete_course(c)).pack(side="left", padx=2)
 
     def filter_courses(self, *args):
-        search_term = self.course_search_var.get().strip().lower()
-        if not search_term:
-            self._render_course_list(self.courses)
-        else:
-            filtered = [c for c in self.courses if search_term in c.get("title", "").lower()]
-            self._render_course_list(filtered)
+        if self._search_after_id:
+            self.app.after_cancel(self._search_after_id)
+        self._search_after_id = self.app.after(250, self._do_filter)
+
+    def _do_filter(self):
+        term = self.course_search_var.get().strip().lower()
+        filtered = self.courses if not term else [
+            c for c in self.courses if term in c.get("title", "").lower()
+        ]
+        self._render_course_list(filtered)
 
     def select_course(self, course):
         self.selected_course_id = course["id"]
@@ -609,6 +680,7 @@ class VideoManagerApp:
             if self.course_search_var.get().strip() else self.courses
         )
         self.current_page = 1
+        self.order_changed = False
         self.refresh_lessons()
 
     def add_course(self):
@@ -683,8 +755,8 @@ class VideoManagerApp:
                         )
                     thumb_url = supabase.storage.from_(config.thumbnail_bucket).get_public_url(storage_path)
                 except Exception as e:
-                    logging.error(f"Thumbnail upload failed: {e}")
-                    messagebox.showwarning("Warning", "Thumbnail upload failed. Course will be created without it.", parent=dialog)
+                    self.show_error("Thumbnail upload failed", e)
+                    # Process continues without thumbnail
             elif thumb_value:
                 thumb_url = thumb_value
 
@@ -799,6 +871,15 @@ class VideoManagerApp:
         if not page_change:
             self.current_page = 1
 
+        # Show loading indicator
+        self._clear_lessons_display()
+        ctk.CTkLabel(
+            self.lessons_frame,
+            text="⏳ جارٍ تحميل الدروس...",
+            font=("", 14), text_color="gray"
+        ).pack(pady=40)
+        self.set_status("⏳ جارٍ التحميل...")
+
         def worker():
             try:
                 course_id = self.selected_course_id
@@ -811,17 +892,22 @@ class VideoManagerApp:
                 resp = supabase.table("lessons").select("*").eq("course_id", course_id).order("sort_order").range(start, end).execute()
                 lessons = resp.data or []
 
-                def update_ui():
-                    self.current_lessons = lessons
-                    self.display_lessons()
-                    self.page_label.configure(text=f"Page {self.current_page} / {total_pages}")
-                    self.prev_page_btn.configure(state="normal" if self.current_page > 1 else "disabled")
-                    self.next_page_btn.configure(state="normal" if self.current_page < total_pages else "disabled")
-                    self.stats_label.configure(text=f"Total: {total_items} lessons")
-                self.app.after(0, update_ui)
+                def on_success():
+                    self.set_status(f"✅ تم تحميل {total_items} درس")
+                    self._apply_lesson_data(lessons, total_pages, total_items)
+
+                self.app.after(0, on_success)
             except Exception as e:
                 self.app.after(0, lambda: self.show_error("Failed to load lessons", e))
         threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_lesson_data(self, lessons, total_pages, total_items):
+        self.current_lessons = lessons
+        self.display_lessons()
+        self.page_label.configure(text=f"Page {self.current_page} / {total_pages}")
+        self.prev_page_btn.configure(state="normal" if self.current_page > 1 else "disabled")
+        self.next_page_btn.configure(state="normal" if self.current_page < total_pages else "disabled")
+        self.stats_label.configure(text=f"Total: {total_items} lessons")
 
     def display_lessons(self):
         if self.display_job:
@@ -884,14 +970,17 @@ class VideoManagerApp:
         short = url[:50] + "..." if len(url) > 50 else url
         ctk.CTkLabel(meta_frame, text=f"🔗 {short}", font=("", 10), text_color="gray").pack(side="left", padx=(8, 0))
 
-        # Sort order
-        sort_frame = ctk.CTkFrame(card, fg_color="transparent")
-        sort_frame.pack(side="right", padx=5)
-        ctk.CTkLabel(sort_frame, text="⬆⬇", font=("", 11)).pack(side="left")
-        sort_entry = ctk.CTkEntry(sort_frame, width=35, justify="center")
-        sort_entry.insert(0, str(lesson.get("sort_order", 0)))
-        sort_entry.pack(side="left", padx=2)
-        lesson["_sort_entry"] = sort_entry
+        # Move buttons for reordering
+        move_frame = ctk.CTkFrame(card, fg_color="transparent")
+        move_frame.pack(side="right", padx=5)
+        ctk.CTkButton(
+            move_frame, text="⬆", width=28, height=26,
+            command=lambda i=index: self.move_lesson(i, -1)
+        ).pack(pady=1)
+        ctk.CTkButton(
+            move_frame, text="⬇", width=28, height=26,
+            command=lambda i=index: self.move_lesson(i, 1)
+        ).pack(pady=1)
 
         # Buttons
         btn_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -903,6 +992,22 @@ class VideoManagerApp:
     def _clear_lessons_display(self):
         for widget in self.lessons_frame.winfo_children():
             widget.destroy()
+
+    def move_lesson(self, index, direction):
+        new_index = index + direction
+        if new_index < 0 or new_index >= len(self.current_lessons):
+            return
+        
+        # Swap in memory
+        self.current_lessons[index], self.current_lessons[new_index] = \
+            self.current_lessons[new_index], self.current_lessons[index]
+        
+        # Mark as changed
+        self.order_changed = True
+        self.btn_reorder.configure(text="💾 Save Order ●", fg_color="orange")
+        
+        # Redraw
+        self.display_lessons()
 
     def add_lesson(self):
         if not self.selected_course_id:
@@ -1063,7 +1168,7 @@ class VideoManagerApp:
                         "is_published": published_var.get(),
                         "is_free": free_var.get()
                     }).execute()
-                    messagebox.showinfo("Success", f"Lesson '{title}' added!", parent=dialog)
+                    messagebox.showinfo("Success ✅", f"Lesson '{title}' added successfully.", parent=dialog)
                     dialog.destroy()
                     self.refresh_lessons()
                     self.load_courses()
@@ -1171,7 +1276,7 @@ class VideoManagerApp:
                     "is_published": published_var.get(), "is_free": free_var.get()
                 }).eq("id", lesson["id"]).execute()
                 dialog.destroy()
-                self.refresh_lessons()
+                self.app.after(0, self.refresh_lessons)
             except Exception as e:
                 self.show_error("Failed to update lesson", e)
 
@@ -1206,42 +1311,89 @@ class VideoManagerApp:
     def delete_selected_lessons(self):
         selected_ids = [lid for lid, var in self.lesson_checkbox_vars.items() if var.get()]
         if not selected_ids:
-            messagebox.showinfo("Info", "No lessons selected.")
+            messagebox.showinfo("⚠️ تنبيه", "اختر درساً أو أكثر أولاً.")
             return
-        if not messagebox.askyesno("Confirm", f"Delete {len(selected_ids)} lessons?"):
+        if not messagebox.askyesno("⚠️ تأكيد الحذف",
+            f"هل تريد حذف {len(selected_ids)} درس؟\n\n⚠️ لا يمكن التراجع!"):
             return
-        try:
-            supabase.table("lessons").delete().in_("id", selected_ids).execute()
-            messagebox.showinfo("Success", f"Deleted {len(selected_ids)} lessons.")
-            self.refresh_lessons()
-            self.load_courses()
-        except Exception as e:
-            self.show_error("Failed to delete", e)
+
+        lessons_to_delete = [l for l in self.current_lessons if l["id"] in selected_ids]
+
+        def worker():
+            # Delete files from storage for direct videos
+            for lesson in lessons_to_delete:
+                if lesson.get("video_type") == "direct" and lesson.get("video_url"):
+                    try:
+                        url = lesson["video_url"]
+                        key = f"/storage/v1/object/public/{config.video_bucket}/"
+                        if key in url:
+                            path = url.split(key)[1]
+                            supabase.storage.from_(config.video_bucket).remove([path])
+                    except Exception as e:
+                        logging.warning(f"Storage delete failed: {e}")
+
+            try:
+                supabase.table("lessons").delete().in_("id", selected_ids).execute()
+                def on_done():
+                    messagebox.showinfo("✅ تم الحذف", f"تم حذف {len(selected_ids)} درس بنجاح.")
+                    self.refresh_lessons()
+                    self.load_courses()
+                self.app.after(0, on_done)
+            except Exception as e:
+                self.app.after(0, lambda: self.show_error("فشل حذف الدروس", e))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def save_lesson_order(self):
-        try:
-            updates = 0
-            for lesson in self.current_lessons:
-                sort_entry = lesson.get("_sort_entry")
-                if sort_entry:
-                    try:
-                        new_order = int(sort_entry.get().strip() or "0")
-                    except ValueError:
-                        new_order = 0
-                    if new_order != lesson.get("sort_order", 0):
-                        supabase.table("lessons").update({"sort_order": new_order}).eq("id", lesson["id"]).execute()
-                        updates += 1
-            if updates > 0:
-                messagebox.showinfo("Success", f"Updated {updates} lessons.")
+        if not self.current_lessons:
+            return
+        if not self.order_changed:
+            messagebox.showinfo("ℹ️", "لم يتم تغيير أي ترتيب.")
+            return
+
+        page_offset = (self.current_page - 1) * config.page_size
+        # New order = list position + page offset
+        updates = [
+            (lesson["id"], lesson.get("title", ""), page_offset + i)
+            for i, lesson in enumerate(self.current_lessons)
+        ]
+
+        self.btn_reorder.configure(state="disabled", text="⏳ جارٍ الحفظ...")
+
+        def worker():
+            failed = []
+            for lesson_id, title, new_order in updates:
+                try:
+                    supabase.table("lessons").update(
+                        {"sort_order": new_order}
+                    ).eq("id", lesson_id).execute()
+                except Exception as e:
+                    logging.error(f"Failed to update order for {lesson_id}: {e}")
+                    failed.append(title)
+
+            def on_done(f=list(failed)):
+                self.order_changed = False
+                self.btn_reorder.configure(
+                    state="normal", text="🔃 Save Order", fg_color=["#3B8ED0", "#1F6AA5"]
+                )
+                if f:
+                    messagebox.showwarning(
+                        "⚠️ اكتمل مع أخطاء",
+                        f"✅ تم تحديث {len(updates) - len(f)} درس.\n"
+                        f"❌ فشل: {', '.join(f)}"
+                    )
+                else:
+                    messagebox.showinfo("✅ تم الحفظ", f"تم حفظ ترتيب {len(updates)} درس بنجاح.")
                 self.refresh_lessons()
-            else:
-                messagebox.showinfo("Info", "No changes.")
-        except Exception as e:
-            self.show_error("Failed to save order", e)
+
+            self.app.after(0, on_done)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def copy_video_url(self, lesson):
+        url = lesson.get("video_url", "")
         self.app.clipboard_clear()
-        self.app.clipboard_append(lesson.get("video_url", ""))
+        self.app.clipboard_append(url)
         messagebox.showinfo("Copied", "URL copied!")
 
     # ===========================
@@ -1260,8 +1412,186 @@ class VideoManagerApp:
     # HELPERS
     # ===========================
     def show_error(self, msg, e):
-        logging.error(f"{msg}: {e}")
-        messagebox.showerror("Error", f"{msg}.\nSee logs for details.")
+        raw = str(e)
+        if hasattr(e, 'message'):
+            raw = e.message
+
+        # Translate common errors
+        if "duplicate key" in raw.lower():
+            friendly = "⚠️ يوجد تكرار في البيانات — تأكد من عدم وجود عنصر مشابه."
+        elif "foreign key" in raw.lower():
+            friendly = "⚠️ لا يمكن الحذف — يوجد بيانات مرتبطة بهذا العنصر."
+        elif "network" in raw.lower() or "connection" in raw.lower():
+            friendly = "⚠️ خطأ في الاتصال بالخادم — تحقق من الإنترنت."
+        elif "jwt" in raw.lower() or "auth" in raw.lower():
+            friendly = "⚠️ خطأ في المصادقة — تحقق من مفاتيح Supabase في .env"
+        elif "not found" in raw.lower():
+            friendly = "⚠️ العنصر غير موجود — ربما تم حذفه مسبقاً."
+        elif "timeout" in raw.lower():
+            friendly = "⚠️ انتهت مهلة الاتصال — حاول مرة أخرى."
+        else:
+            friendly = raw
+
+        logging.error(f"{msg}: {raw}", exc_info=True)
+        messagebox.showerror("❌ خطأ", f"{msg}\n\n{friendly}\n\n(راجع الـ logs للتفاصيل)")
+
+    # ===========================
+    # DRAG AND DROP
+    # ===========================
+    def _setup_drag_drop(self):
+        """Register the main window as a drop target for video files."""
+        if not HAS_DND:
+            return
+        try:
+            self.app.drop_target_register(DND_FILES)
+            self.app.dnd_bind('<<Drop>>', self._handle_drop)
+            logging.info("✅ Drag-and-drop enabled.")
+        except Exception as e:
+            logging.warning(f"Drag-and-drop registration failed: {e}")
+
+    def _handle_drop(self, event):
+        """
+        Called when the user drops files onto the window.
+        Filters video files and triggers the upload flow.
+        """
+        if not HAS_DND:
+            return
+
+        if not self.selected_course_id:
+            messagebox.showwarning(
+                "⚠️ لم يتم اختيار كورس",
+                "الرجاء اختيار كورس أولاً ثم اسحب الملف مرة أخرى."
+            )
+            return
+
+        if self.upload_in_progress:
+            messagebox.showwarning("⚠️ رفع جارٍ", "يوجد رفع قيد التنفيذ. انتظر حتى ينتهي.")
+            return
+
+        # splitlist handles paths with spaces and curly-brace quoting
+        try:
+            raw_files = self.app.splitlist(event.data)
+        except Exception:
+            raw_files = event.data.split()
+
+        allowed_ext = tuple(config.allowed_video_ext)   # e.g. ('.mp4', '.mkv', ...)
+        valid_files = [
+            f for f in raw_files
+            if os.path.isfile(f) and os.path.splitext(f)[1].lower() in allowed_ext
+        ]
+        skipped = len(raw_files) - len(valid_files)
+
+        if skipped:
+            logging.warning(f"{skipped} file(s) skipped (unsupported format or not a file).")
+
+        if not valid_files:
+            messagebox.showwarning(
+                "⚠️ لا توجد ملفات صالحة",
+                "لم يتم العثور على ملفات فيديو صالحة.\n"
+                f"الامتدادات المسموح بها: {', '.join(config.allowed_video_ext)}"
+            )
+            return
+
+        if len(valid_files) == 1:
+            # Single file → show the detailed dialog for title/description
+            file_path = valid_files[0]
+            file_size = os.path.getsize(file_path)
+            if file_size > config.max_video_size:
+                size_mb = config.max_video_size // (1024 * 1024)
+                messagebox.showerror("❌ الملف كبير جداً", f"الحد الأقصى للحجم: {size_mb} MB")
+                return
+            self._show_upload_lesson_dialog(file_path, file_size)
+        else:
+            # Multiple files → validate sizes then bulk-upload
+            oversized = []
+            ok_files  = []
+            for f in valid_files:
+                if os.path.getsize(f) > config.max_video_size:
+                    oversized.append(os.path.basename(f))
+                else:
+                    ok_files.append(f)
+
+            if oversized:
+                messagebox.showwarning(
+                    "⚠️ ملفات كبيرة جداً – سيتم تخطيها",
+                    "\n".join(oversized)
+                )
+
+            if not ok_files:
+                return
+
+            if not messagebox.askyesno(
+                "📤 تأكيد الرفع",
+                f"رفع {len(ok_files)} ملف فيديو إلى الكورس المختار؟"
+            ):
+                return
+
+            # Re-use the existing bulk-upload worker
+            self.app.after(0, lambda: self.show_upload_progress(f"{len(ok_files)} files"))
+
+            def worker(files=ok_files):
+                import uuid
+                total = len(files)
+                succeeded = 0
+                failed_files = []
+                try:
+                    max_res = supabase.table("lessons").select("sort_order")\
+                        .eq("course_id", self.selected_course_id)\
+                        .order("sort_order", desc=True).limit(1).execute()
+                    next_order = (max_res.data[0]["sort_order"] + 1) if max_res.data else 0
+                except Exception:
+                    next_order = 0
+
+                for i, file_path in enumerate(files):
+                    try:
+                        filename  = os.path.basename(file_path)
+                        file_ext  = os.path.splitext(filename)[1]
+                        unique    = f"{uuid.uuid4().hex}{file_ext}"
+                        spath     = f"courses/{self.selected_course_id}/{unique}"
+                        ctype     = CONTENT_TYPES.get(file_ext.lower(), 'video/mp4')
+                        progress  = (i + 1) / total
+                        self.app.after(0, lambda p=progress, fn=filename, cur=i+1:
+                            self.update_upload_progress(p, f"📤 [{cur}/{total}] {fn}"))
+                        with open(file_path, "rb") as fh:
+                            data = fh.read()
+                        supabase.storage.from_(config.video_bucket).upload(
+                            spath, data, {"content-type": ctype, "x-upsert": "true"}
+                        )
+                        video_url  = supabase.storage.from_(config.video_bucket).get_public_url(spath)
+                        auto_title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
+                        supabase.table("lessons").insert({
+                            "course_id":  self.selected_course_id,
+                            "title":      auto_title,
+                            "video_url":  video_url,
+                            "video_type": "direct",
+                            "sort_order": next_order + i,
+                            "is_published": True,
+                            "is_free": False
+                        }).execute()
+                        succeeded += 1
+                    except Exception as e:
+                        logging.error(f"DnD upload failed for {filename}: {e}", exc_info=True)
+                        failed_files.append(os.path.basename(file_path))
+
+                self.app.after(0, lambda: self.update_upload_progress(1.0, "✅ اكتملت جميع الرفوعات!"))
+                import time as _time; _time.sleep(1)
+
+                def on_complete(s=succeeded, f=list(failed_files)):
+                    self.hide_upload_progress()
+                    if not f:
+                        messagebox.showinfo("✅ تم الرفع", f"تم رفع جميع الملفات ({s}) بنجاح.")
+                    else:
+                        messagebox.showwarning(
+                            "⚠️ اكتمل بنجاح جزئي",
+                            f"تم رفع {s} وفشل {len(f)} ملفات:\n" + "\n".join(f)
+                        )
+                    self.refresh_lessons()
+                    self.load_courses()
+
+                self.app.after(0, on_complete)
+
+            import threading as _threading
+            _threading.Thread(target=worker, daemon=True).start()
 
     def run(self):
         self.app.mainloop()
