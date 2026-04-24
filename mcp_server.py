@@ -138,6 +138,11 @@ def serve_google_verification():
     """خدمة ملف التحقق من Google Search Console"""
     return FileResponse(os.path.join(script_dir, "google0e59f1440c6a05bd.html"))
 
+@app.get("/sitemap.xml", include_in_schema=False)
+def serve_sitemap():
+    """خدمة ملف خريطة الموقع لمحركات البحث"""
+    return FileResponse(os.path.join(script_dir, "sitemap.xml"), media_type="application/xml")
+
 # --- Session Management ---
 @app.post("/sessions/login", summary="Student login and session creation")
 def login_and_create_session(data: SessionLogin):
