@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "mcp_server.py",
+          "google0e59f1440c6a05bd.html",
+          "sitemap.xml"
+        ]
+      }
+    },
+    {
+      "src": "build/web/**/*",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    { "src": "/sessions/(.*)",  "dest": "/api/index.py" },
+    { "src": "/admin/(.*)",     "dest": "/api/index.py" },
+    { "src": "/student/(.*)",   "dest": "/api/index.py" },
+    { "src": "/questions(.*)",  "dest": "/api/index.py" },
+    { "src": "/attempts/(.*)",  "dest": "/api/index.py" },
+    { "src": "/sections/(.*)",  "dest": "/api/index.py" },
+    { "src": "/courses/(.*)",   "dest": "/api/index.py" },
+    { "src": "/lessons/(.*)",   "dest": "/api/index.py" },
+    { "src": "/video/(.*)",     "dest": "/api/index.py" },
+    { "src": "/reports/(.*)",   "dest": "/api/index.py" },
+    { "src": "/progress/(.*)",  "dest": "/api/index.py" },
+    { "src": "/sitemap.xml",    "dest": "/api/index.py" },
+    { "src": "/google(.*)",     "dest": "/api/index.py" },
+    { "src": "/",               "dest": "/build/web/index.html" },
+    { "src": "/(.*)",           "dest": "/build/web/$1" }
+  ]
+}
