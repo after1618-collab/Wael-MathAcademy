@@ -1,0 +1,5 @@
+# Force LF for all files on Vercel/Linux
+*.py text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.toml text eol=lf

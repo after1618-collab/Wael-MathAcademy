@@ -1,12 +1,32 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:wael_mcp/session_manager.dart';
 
 class ApiService {
-  // ✅ Change this when deploying to production
-  static const String baseUrl = 'https://wael-mathacademy.up.railway.app';
+  // ✅ Auto-detects the API URL based on the current domain.
+  // On web (Vercel/production): uses the same domain as the frontend.
+  // On local web dev (localhost): points to local FastAPI server on port 8000.
+  // On mobile: falls back to the production URL.
+  static String get baseUrl {
+    if (kIsWeb) {
+      final uri = Uri.base;
+      if (uri.host == 'localhost' || uri.host == '127.0.0.1') {
+        // Local dev: Flutter web = :8080, FastAPI = :8000
+        return 'http://${uri.host}:8000';
+      }
+      // Production (Vercel / custom domain): API is on the same domain
+      final port = (uri.port == 80 || uri.port == 443 || uri.port == 0)
+          ? ''
+          : ':${uri.port}';
+      return '${uri.scheme}://${uri.host}$port';
+    }
+    // Mobile fallback — update this if you have a dedicated mobile API URL
+    return 'https://wael-mathacademy.up.railway.app';
+  }
+
   static const Duration _timeout = Duration(seconds: 15);
 
   // --- Private: Build Headers ---
