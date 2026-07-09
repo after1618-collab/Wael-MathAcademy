@@ -23,7 +23,13 @@ dotenv_path = os.path.join(script_dir, ".env")
 if not os.path.exists(dotenv_path) and os.path.exists(os.path.join(script_dir, "env")):
     dotenv_path = os.path.join(script_dir, "env")
 
+print("ENV PATH =", dotenv_path)
+print("FILE EXISTS =", os.path.exists(dotenv_path))
+
 env_loaded = load_dotenv(dotenv_path)
+
+print("ENV LOADED =", env_loaded)
+print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY") # ⚠️ إضافة مفتاح أمان للمعلم
@@ -32,6 +38,9 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
     error_msg = f"❌ Environment variables missing.\nChecked file: {dotenv_path}\nFile Found: {env_loaded}"
     if not env_loaded: error_msg += "\n\n⚠️ Ensure the '.env' file exists in the project root folder."
     raise RuntimeError(error_msg)
+
+from api.storage.provider import storage
+from api.storage.config import config
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -137,11 +146,11 @@ def get_admin_access(x_api_key: str = Header(..., description="Admin's secret AP
 def serve_google_verification():
     """خدمة ملف التحقق من Google Search Console"""
     return FileResponse(os.path.join(script_dir, "google0e59f1440c6a05bd.html"))
-
 @app.get("/sitemap.xml", include_in_schema=False)
 def serve_sitemap():
     """خدمة ملف خريطة الموقع لمحركات البحث"""
     return FileResponse(os.path.join(script_dir, "sitemap.xml"), media_type="application/xml")
+
 
 # --- Session Management ---
 @app.post("/sessions/login", summary="Student login and session creation")
@@ -487,10 +496,19 @@ def get_section_questions(section_id: str, student_id: str = Depends(get_current
         result = supabase.table("questions").select("*").eq("section_id", section_id).order("created_at").execute()
         
         questions = result.data
-        # ✅ أضف رابط الصورة الكامل لكل سؤال
+
+        # ✅ اختبار مؤقت لمعرفة مسار الصور والرابط الناتج
         for q in questions:
             if q.get("image_path"):
-                q["image_url"] = supabase.storage.from_("questions").get_public_url(q["image_path"])
+                print("IMAGE PATH =", q["image_path"])
+
+                q["image_url"] = storage.get_url(
+                    config.questions_bucket,
+                    q["image_path"],
+                )
+
+                print("IMAGE URL =", q["image_url"])
+
             else:
                 q["image_url"] = None
         
@@ -571,7 +589,10 @@ def get_student_wrong_answers(student_id: str = Depends(get_current_student)):
 
             image_url = None
             if q.get("image_path"):
-                image_url = supabase.storage.from_("questions").get_public_url(q["image_path"])
+                image_url = storage.get_url(
+                    config.questions_bucket,
+                    q["image_path"],
+                )
 
             wrong_answers.append({
                 "question_id": q["id"],
@@ -607,7 +628,8 @@ class LessonData(BaseModel):
     course_id: str
     title: str
     description: str = None
-    video_url: str
+    video_url: str = None
+    video_path: str = None
     video_type: str = "youtube"
     duration_minutes: int = None
     sort_order: int = 0
@@ -657,6 +679,19 @@ def get_courses(student_id: str = Depends(get_current_student)):
         raise HTTPException(status_code=500, detail=f"Failed to get courses: {e}")
 
 
+def _resolve_video_url(lesson: dict) -> str:
+    """Return a playable video URL.
+
+    Prefers the provider-independent storage key (video_path) and generates
+    the URL at read time; falls back to the legacy stored video_url so old
+    rows (and external YouTube/Vimeo/Drive links) keep working.
+    """
+    vp = lesson.get("video_path")
+    if vp:
+        return storage.get_url(bucket=config.video_bucket, remote_path=vp)
+    return lesson.get("video_url")
+
+
 @app.get("/courses/{course_id}/lessons", summary="Get lessons for a course (Protected)")
 def get_course_lessons(course_id: str, student_id: str = Depends(get_current_student)):
     try:
@@ -664,6 +699,9 @@ def get_course_lessons(course_id: str, student_id: str = Depends(get_current_stu
             "course_id", course_id
         ).eq("is_published", True).order("sort_order").execute()
         lessons = result.data or []
+        for lesson in lessons:
+            if lesson.get("video_path"):
+                lesson["video_url"] = _resolve_video_url(lesson)
 
         for lesson in lessons:
             progress_res = supabase.table("lesson_progress").select(
@@ -789,7 +827,11 @@ def admin_get_course_lessons(course_id: str, _: bool = Depends(get_admin_access)
         result = supabase.table("lessons").select("*").eq(
             "course_id", course_id
         ).order("sort_order").execute()
-        return {"lessons": result.data or []}
+        lessons = result.data or []
+        for lesson in lessons:
+            if lesson.get("video_path"):
+                lesson["video_url"] = _resolve_video_url(lesson)
+        return {"lessons": lessons}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get lessons: {e}")
 
@@ -797,11 +839,20 @@ def admin_get_course_lessons(course_id: str, _: bool = Depends(get_admin_access)
 @app.post("/admin/lessons", summary="(Admin) Create a lesson")
 def admin_create_lesson(lesson: LessonData, _: bool = Depends(get_admin_access)):
     try:
+        # Expand phase: store BOTH video_path (source of truth) and the generated
+        # video_url (kept temporarily for backward compatibility). For direct
+        # uploads the URL is generated from video_path; external types keep the
+        # provided video_url.
+        if lesson.video_type == "direct" and lesson.video_path:
+            video_url_val = storage.get_url(bucket=config.video_bucket, remote_path=lesson.video_path)
+        else:
+            video_url_val = lesson.video_url
         result = supabase.table("lessons").insert({
             "course_id": lesson.course_id,
             "title": lesson.title,
             "description": lesson.description,
-            "video_url": lesson.video_url,
+            "video_url": video_url_val,
+            "video_path": lesson.video_path,
             "video_type": lesson.video_type,
             "duration_minutes": lesson.duration_minutes,
             "sort_order": lesson.sort_order,
@@ -816,11 +867,16 @@ def admin_create_lesson(lesson: LessonData, _: bool = Depends(get_admin_access))
 @app.put("/admin/lessons/{lesson_id}", summary="(Admin) Update a lesson")
 def admin_update_lesson(lesson_id: str, lesson: LessonData, _: bool = Depends(get_admin_access)):
     try:
+        if lesson.video_type == "direct" and lesson.video_path:
+            video_url_val = storage.get_url(bucket=config.video_bucket, remote_path=lesson.video_path)
+        else:
+            video_url_val = lesson.video_url
         result = supabase.table("lessons").update({
             "course_id": lesson.course_id,
             "title": lesson.title,
             "description": lesson.description,
-            "video_url": lesson.video_url,
+            "video_url": video_url_val,
+            "video_path": lesson.video_path,
             "video_type": lesson.video_type,
             "duration_minutes": lesson.duration_minutes,
             "sort_order": lesson.sort_order,
@@ -923,7 +979,7 @@ def request_video_access(
 
         # 2. Get lesson info
         lesson_res = supabase.table("lessons").select(
-            "video_url, video_type, title"
+            "video_url, video_path, video_type, title"
         ).eq("id", req.lesson_id).limit(1).execute()
 
         if not lesson_res.data:
@@ -946,7 +1002,7 @@ def request_video_access(
         # ✅ مش بنزود العداد هنا خالص
         return {
             "status": "granted",
-            "video_url": lesson["video_url"],
+            "video_url": _resolve_video_url(lesson),
             "video_type": lesson["video_type"],
             "video_token": video_token,
             "expires_in": 3600,

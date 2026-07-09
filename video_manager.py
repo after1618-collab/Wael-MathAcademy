@@ -13,6 +13,19 @@ from dataclasses import dataclass
 from typing import List
 from io import BytesIO
 
+# تحميل .env أولاً
+script_dir = os.path.dirname(os.path.abspath(__file__))
+dotenv_path = os.path.join(script_dir, ".env")
+load_dotenv(dotenv_path)
+
+# بعد ذلك فقط استورد Provider
+from api.storage.provider import storage
+
+try:
+    from api.storage.provider import storage as storage_provider
+except Exception:
+    storage_provider = None
+
 # ── Drag-and-drop support (optional dependency) ──────────────────────────
 try:
     from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -52,10 +65,6 @@ class AppConfig:
             raise ValueError("Supabase credentials not found in .env")
 
 # --- INIT ---
-script_dir = os.path.dirname(os.path.abspath(__file__))
-dotenv_path = os.path.join(script_dir, ".env")
-load_dotenv(dotenv_path)
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 config = AppConfig()
@@ -405,28 +414,30 @@ class VideoManagerApp:
                 # Step 3: Upload to Supabase Storage
                 self.app.after(0, lambda: self.update_upload_progress(0.1, f"📤 جارٍ التحميل: {filename} ..."))
 
-                with open(file_path, "rb") as f:
-                    file_data = f.read()
-
                 content_type = CONTENT_TYPES.get(file_ext.lower(), 'video/mp4')
                 self.app.after(0, lambda: self.update_upload_progress(0.4, f"📤 جارٍ الرفع إلى التخزين..."))
 
-                supabase.storage.from_(config.video_bucket).upload(
-                    storage_path,
-                    file_data,
-                    {"content-type": content_type, "x-upsert": "true"}
-                )
+                with open(file_path, "rb") as f:
+                    storage.upload_file(
+                        bucket=config.video_bucket,
+                        remote_path=storage_path,
+                        file=f,
+                        upsert=True,
+                        content_type=content_type,
+                    )
 
                 self.app.after(0, lambda: self.update_upload_progress(0.8, "✅ اكتمل الرفع! يتم الحفظ..."))
 
-                video_url = supabase.storage.from_(config.video_bucket).get_public_url(storage_path)
+                video_url = storage.get_url(bucket=config.video_bucket, remote_path=storage_path)
 
-                # Step 4: Create lesson record
+                # Step 4: Create lesson record (Expand phase: store BOTH video_path
+                # (source of truth) and the generated video_url for backward compat).
                 supabase.table("lessons").insert({
                     "course_id": course_id,
                     "title": lesson_data["title"],
                     "description": lesson_data.get("description"),
                     "video_url": video_url,
+                    "video_path": storage_path,
                     "video_type": "direct",
                     "duration_minutes": lesson_data.get("duration_minutes"),
                     "sort_order": next_order,
@@ -449,7 +460,7 @@ class VideoManagerApp:
                 self.app.after(0, on_complete)
 
             except Exception as e:
-                self.app.after(0, lambda: [self.hide_upload_progress(), self.show_error("فشل رفع الملف", e)])
+                self.app.after(0, lambda e=e: [self.hide_upload_progress(), self.show_error("فشل رفع الملف", e)])
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -523,20 +534,22 @@ class VideoManagerApp:
                     content_type = CONTENT_TYPES.get(file_ext.lower(), 'video/mp4')
 
                     with open(file_path, "rb") as f:
-                        file_data = f.read()
+                        storage.upload_file(
+                            bucket=config.video_bucket,
+                            remote_path=storage_path,
+                            file=f,
+                            upsert=True,
+                            content_type=content_type,
+                        )
 
-                    supabase.storage.from_(config.video_bucket).upload(
-                        storage_path, file_data,
-                        {"content-type": content_type, "x-upsert": "true"}
-                    )
-
-                    video_url = supabase.storage.from_(config.video_bucket).get_public_url(storage_path)
+                    video_url = storage.get_url(bucket=config.video_bucket, remote_path=storage_path)
                     auto_title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
 
                     supabase.table("lessons").insert({
                         "course_id": self.selected_course_id,
                         "title": auto_title,
                         "video_url": video_url,
+                        "video_path": storage_path,
                         "video_type": "direct",
                         "sort_order": next_order + i,
                         "is_published": True,
@@ -749,11 +762,14 @@ class VideoManagerApp:
                     ext = os.path.splitext(local_path)[1]
                     storage_path = f"thumbnails/{uuid.uuid4().hex}{ext}"
                     with open(local_path, "rb") as f:
-                        supabase.storage.from_(config.thumbnail_bucket).upload(
-                            storage_path, f.read(),
-                            {"content-type": f"image/{ext.replace('.', '')}", "x-upsert": "true"}
+                        storage.upload_file(
+                            bucket=config.thumbnail_bucket,
+                            remote_path=storage_path,
+                            file=f,
+                            upsert=True,
+                            content_type=f"image/{ext.replace('.', '')}",
                         )
-                    thumb_url = supabase.storage.from_(config.thumbnail_bucket).get_public_url(storage_path)
+                    thumb_url = storage.get_url(bucket=config.thumbnail_bucket, remote_path=storage_path)
                 except Exception as e:
                     self.show_error("Thumbnail upload failed", e)
                     # Process continues without thumbnail
@@ -898,7 +914,7 @@ class VideoManagerApp:
 
                 self.app.after(0, on_success)
             except Exception as e:
-                self.app.after(0, lambda: self.show_error("Failed to load lessons", e))
+                self.app.after(0, lambda e=e: self.show_error("Failed to load lessons", e))
         threading.Thread(target=worker, daemon=True).start()
 
     def _apply_lesson_data(self, lessons, total_pages, total_items):
@@ -1257,7 +1273,10 @@ class VideoManagerApp:
         def save():
             title = title_entry.get().strip()
             url = url_entry.get().strip()
-            if not title or not url:
+            vtype = type_var.get()
+            # For direct uploads the canonical storage is video_path; the URL
+            # field may be empty, so don't block saving in that case.
+            if not title or (not url and not (vtype == "direct" and lesson.get("video_path"))):
                 messagebox.showerror("Error", "Title and URL required!", parent=dialog)
                 return
             try:
@@ -1268,13 +1287,24 @@ class VideoManagerApp:
                 sort_val = int(sort_entry.get().strip() or "0")
             except ValueError:
                 sort_val = 0
+            # Expand phase: for direct uploads keep BOTH video_path and video_url
+            # (video_url is the generated R2 URL, retained for backward compat).
+            # For external types, clear video_path and keep the external video_url.
+            if vtype == "direct":
+                video_path_val = lesson.get("video_path")
+                video_url_val = lesson.get("video_url")
+            else:
+                video_path_val = None
+                video_url_val = url
+            update_data = {
+                "title": title, "video_url": video_url_val, "video_type": vtype,
+                "description": desc_text.get("1.0", "end-1c").strip() or None,
+                "duration_minutes": dur, "sort_order": sort_val,
+                "is_published": published_var.get(), "is_free": free_var.get(),
+                "video_path": video_path_val
+            }
             try:
-                supabase.table("lessons").update({
-                    "title": title, "video_url": url, "video_type": type_var.get(),
-                    "description": desc_text.get("1.0", "end-1c").strip() or None,
-                    "duration_minutes": dur, "sort_order": sort_val,
-                    "is_published": published_var.get(), "is_free": free_var.get()
-                }).eq("id", lesson["id"]).execute()
+                supabase.table("lessons").update(update_data).eq("id", lesson["id"]).execute()
                 dialog.destroy()
                 self.app.after(0, self.refresh_lessons)
             except Exception as e:
@@ -1291,14 +1321,19 @@ class VideoManagerApp:
             return
         try:
             # Also delete from storage if it's a direct upload
-            if lesson.get("video_type") == "direct" and lesson.get("video_url"):
+            storage_path = lesson.get("video_path")
+            if not storage_path and lesson.get("video_type") == "direct" and lesson.get("video_url"):
                 try:
                     url = lesson["video_url"]
-                    # Extract storage path from URL
+                    # Extract storage path from URL (legacy rows without video_path)
                     if f"/storage/v1/object/public/{config.video_bucket}/" in url:
                         storage_path = url.split(f"/storage/v1/object/public/{config.video_bucket}/")[1]
-                        supabase.storage.from_(config.video_bucket).remove([storage_path])
-                        logging.info(f"Deleted video from storage: {storage_path}")
+                except Exception:
+                    storage_path = None
+            if storage_path:
+                try:
+                    storage.delete_file(bucket=config.video_bucket, remote_path=storage_path)
+                    logging.info(f"Deleted video from storage: {storage_path}")
                 except Exception as e:
                     logging.warning(f"Could not delete video from storage: {e}")
 
@@ -1322,13 +1357,18 @@ class VideoManagerApp:
         def worker():
             # Delete files from storage for direct videos
             for lesson in lessons_to_delete:
-                if lesson.get("video_type") == "direct" and lesson.get("video_url"):
+                path = lesson.get("video_path")
+                if not path and lesson.get("video_type") == "direct" and lesson.get("video_url"):
                     try:
                         url = lesson["video_url"]
                         key = f"/storage/v1/object/public/{config.video_bucket}/"
                         if key in url:
                             path = url.split(key)[1]
-                            supabase.storage.from_(config.video_bucket).remove([path])
+                    except Exception:
+                        path = None
+                if path:
+                    try:
+                        storage.delete_file(bucket=config.video_bucket, remote_path=path)
                     except Exception as e:
                         logging.warning(f"Storage delete failed: {e}")
 
@@ -1340,7 +1380,7 @@ class VideoManagerApp:
                     self.load_courses()
                 self.app.after(0, on_done)
             except Exception as e:
-                self.app.after(0, lambda: self.show_error("فشل حذف الدروس", e))
+                self.app.after(0, lambda e=e: self.show_error("فشل حذف الدروس", e))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1553,16 +1593,20 @@ class VideoManagerApp:
                         self.app.after(0, lambda p=progress, fn=filename, cur=i+1:
                             self.update_upload_progress(p, f"📤 [{cur}/{total}] {fn}"))
                         with open(file_path, "rb") as fh:
-                            data = fh.read()
-                        supabase.storage.from_(config.video_bucket).upload(
-                            spath, data, {"content-type": ctype, "x-upsert": "true"}
-                        )
-                        video_url  = supabase.storage.from_(config.video_bucket).get_public_url(spath)
+                            storage.upload_file(
+                                bucket=config.video_bucket,
+                                remote_path=spath,
+                                file=fh,
+                                upsert=True,
+                                content_type=ctype,
+                            )
+                        video_url  = storage.get_url(bucket=config.video_bucket, remote_path=spath)
                         auto_title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
                         supabase.table("lessons").insert({
                             "course_id":  self.selected_course_id,
                             "title":      auto_title,
                             "video_url":  video_url,
+                            "video_path": spath,
                             "video_type": "direct",
                             "sort_order": next_order + i,
                             "is_published": True,
