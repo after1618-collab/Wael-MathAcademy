@@ -58,7 +58,8 @@ app = FastAPI(title="WAEL MCP Backend", version="1.0", description="Server for m
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://wael-mathacademy.up.railway.app",
+        "https://wael-mathacademy.pages.dev",
+        "https://wael-mathacademy.onrender.com",
         "http://localhost:8080",
         "http://127.0.0.1:8080",
     ],
