@@ -19,14 +19,15 @@ class QuestionScreen extends StatefulWidget {
   State<QuestionScreen> createState() => _QuestionScreenState();
 }
 
-class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObserver {
+class _QuestionScreenState extends State<QuestionScreen>
+    with WidgetsBindingObserver {
   late final Future<List<Map<String, dynamic>>> _questionsFuture;
   final PageController _pageController = PageController();
   final Map<String, String> _selectedAnswers = {};
   int _currentPage = 0;
   final Map<String, bool> _isCorrect = {};
   final Map<String, bool> _isRevealed = {};
-  
+
   String _studentName = 'طالب';
   String _studentEmail = '';
 
@@ -152,12 +153,14 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
         }
 
         // ✅ التنقل بالأسهم (يمين = التالي، يسار = السابق)
-        if (key == 39) { // Right Arrow
+        if (key == 39) {
+          // Right Arrow
           _pageController.nextPage(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
           );
-        } else if (key == 37) { // Left Arrow
+        } else if (key == 37) {
+          // Left Arrow
           _pageController.previousPage(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
@@ -166,7 +169,8 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
       }),
     );
 
-    _subscriptions.add(html.document.onDragStart.listen((e) => e.preventDefault()));
+    _subscriptions
+        .add(html.document.onDragStart.listen((e) => e.preventDefault()));
     _subscriptions.add(html.document.onDrop.listen((e) => e.preventDefault()));
     _startDevToolsDetection();
   }
@@ -220,7 +224,10 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
           children: [
             const Icon(Icons.shield_rounded, color: Colors.white, size: 20),
             const SizedBox(width: 10),
-            Expanded(child: Text('⚠️ $message', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
+            Expanded(
+                child: Text('⚠️ $message',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w500))),
           ],
         ),
         backgroundColor: Colors.red.shade700,
@@ -247,8 +254,8 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
     );
   }
 
-  Future<void> _submitAnswer(String questionId, String answer,
-      Map<String, dynamic> question) async {
+  Future<void> _submitAnswer(
+      String questionId, String answer, Map<String, dynamic> question) async {
     if (_selectedAnswers.containsKey(questionId)) return;
 
     final correctAnswer = question['correct_answer'] as String;
@@ -346,7 +353,8 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
                   ElevatedButton.icon(
                     onPressed: () {
                       setState(() {
-                        _questionsFuture = ApiService.getQuestions(widget.sectionId);
+                        _questionsFuture =
+                            ApiService.getQuestions(widget.sectionId);
                       });
                     },
                     icon: const Icon(Icons.refresh),
@@ -357,8 +365,7 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
             );
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
-                child: Text('No questions in this section.'));
+            return const Center(child: Text('No questions in this section.'));
           }
 
           final questions = snapshot.data!;
@@ -397,7 +404,7 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
                           painter: WatermarkPainter(studentInfo),
                         ),
                       ),
-                      
+
                       // 2. Logo Watermark (Dynamic Size)
                       Positioned.fill(
                         child: Center(
@@ -555,12 +562,9 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
                 onPressed:
                     answerIsRevealed ? null : () => _revealAnswer(questionId),
                 icon: Icon(
-                  answerIsRevealed
-                      ? Icons.lightbulb
-                      : Icons.lightbulb_outline,
+                  answerIsRevealed ? Icons.lightbulb : Icons.lightbulb_outline,
                 ),
-                label: Text(
-                    answerIsRevealed ? 'Revealed' : 'Reveal Answer'),
+                label: Text(answerIsRevealed ? 'Revealed' : 'Reveal Answer'),
               ),
             )
           else
@@ -576,9 +580,7 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  _isCorrect[questionId] == true
-                      ? '✅ Correct!'
-                      : '❌ Wrong!',
+                  _isCorrect[questionId] == true ? '✅ Correct!' : '❌ Wrong!',
                   style: TextStyle(
                     color: _isCorrect[questionId] == true
                         ? Colors.green.shade700
@@ -612,8 +614,9 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
         backgroundColor = _isCorrect[questionId] == true
             ? Colors.green.shade50
             : Colors.red.shade50;
-        textColor =
-            _isCorrect[questionId] == true ? Colors.green.shade700 : Colors.red.shade700;
+        textColor = _isCorrect[questionId] == true
+            ? Colors.green.shade700
+            : Colors.red.shade700;
       } else if (option.toUpperCase() == correctAnswer.toUpperCase()) {
         borderColor = Colors.green;
         backgroundColor = Colors.green.shade50;
@@ -621,14 +624,17 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
       }
     }
 
-    if (answerIsRevealed && option.toUpperCase() == correctAnswer.toUpperCase()) {
+    if (answerIsRevealed &&
+        option.toUpperCase() == correctAnswer.toUpperCase()) {
       borderColor = Colors.orange;
       backgroundColor = Colors.orange.shade50;
       textColor = Colors.orange.shade700;
     }
 
     return GestureDetector(
-      onTap: hasAnswered ? null : () => _submitAnswer(questionId, option, question),
+      onTap: hasAnswered
+          ? null
+          : () => _submitAnswer(questionId, option, question),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         width: 65,
