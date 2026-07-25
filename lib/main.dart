@@ -1,18 +1,27 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wael_mcp/session_manager.dart';
 import 'package:wael_mcp/api_service.dart';
 import 'package:wael_mcp/student_dashboard.dart';
 import 'package:wael_mcp/screens/courses_screen.dart';
+import 'package:wael_mcp/screens/landing_screen.dart';
 import 'login_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ✅ Path-based routing للـ Web فقط (يشيل # من الـ URL)
+  if (kIsWeb) {
+    setUrlStrategy(PathUrlStrategy());
+  }
+
   // ✅ تهيئة Supabase
+  // ⚠️ غيّر المفاتيح دي لو عندك قيم مختلفة في .env
   await Supabase.initialize(
     url: 'https://mhystvgetxndvbnkuczz.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', // ← ضع مفتاحك هنا
   );
 
   await SessionManager().loadToken();
@@ -21,16 +30,19 @@ Future<void> main() async {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MCP',
+      title: 'Wael Math Academy',
       debugShowCheckedModeBanner: false,
-      initialRoute: '/splash',
+      initialRoute: '/',
       routes: {
+        '/': (ctx) => const LandingScreen(),
         '/splash': (ctx) => const SplashScreen(),
         '/login': (ctx) => const LoginScreen(),
         '/courses': (ctx) => const CoursesScreen(),
+        '/dashboard': (ctx) => const StudentDashboard(),
       },
       theme: ThemeData.light().copyWith(
         scaffoldBackgroundColor: Colors.grey[100],
@@ -80,9 +92,7 @@ class _SplashScreenState extends State<SplashScreen>
     if (token != null) {
       final isValid = await ApiService.validateSession();
       if (isValid == true && mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const StudentDashboard()),
-        );
+        Navigator.of(context).pushReplacementNamed('/dashboard');
         return;
       }
     }

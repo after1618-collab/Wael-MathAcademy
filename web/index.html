@@ -1,38 +1,83 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
-
-  <!-- iOS meta tags & icons -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- SEO Meta Tags -->
+  <title>Wael Math Academy | Best SAT Math & EST Math Tutor in Egypt</title>
+  <meta name="description" content="Join Wael Math Academy for expert SAT Math, EST Math, and secondary school math tutoring in Egypt. Proven results with hundreds of successful students.">
+  <meta name="keywords" content="SAT Math, EST Math, math tutor Egypt, best math teacher, secondary math, رياضيات ثانوية, تدريس رياضيات, شرح رياضيات, Wael Math Academy">
+  <meta name="author" content="Wael Math Academy">
+  <link rel="canonical" href="https://wael-mathacademy.pages.dev/">
+  
+  <!-- Open Graph (Facebook/WhatsApp) -->
+  <meta property="og:title" content="Wael Math Academy | Best SAT & EST Math Tutor">
+  <meta property="og:description" content="Expert SAT Math and EST Math preparation with proven results. Join hundreds of successful students.">
+  <meta property="og:image" content="https://wael-mathacademy.pages.dev/assets/logo.jpg">
+  <meta property="og:url" content="https://wael-mathacademy.pages.dev/">
+  <meta property="og:type" content="website">
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Wael Math Academy">
+  <meta name="twitter:description" content="Expert SAT Math and EST Math tutoring in Egypt">
+  <meta name="twitter:image" content="https://wael-mathacademy.pages.dev/assets/logo.jpg">
+  
+  <!-- iOS -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="wael_math">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Wael Math Academy">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
+  
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>wael_math</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "EducationalOrganization",
+    "name": "Wael Math Academy",
+    "description": "Expert SAT Math and EST Math tutoring in Egypt",
+    "url": "https://wael-mathacademy.pages.dev",
+    "logo": "https://wael-mathacademy.pages.dev/assets/logo.jpg",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "telephone": "+20-100-391-2064",
+      "contactType": "educational services",
+      "areaServed": "EG",
+      "availableLanguage": ["Arabic", "English"]
+    }
+  }
+  </script>
 </head>
 <body>
+  <!-- Static SEO content for crawlers -->
+  <div id="seo-content" style="position:absolute;left:-9999px;top:0;">
+    <h1>Best SAT Math and EST Math Tutor in Egypt</h1>
+    <p>Wael Math Academy offers expert preparation for SAT Math, EST Math, and secondary school mathematics. Join hundreds of successful students who achieved their academic goals.</p>
+    <h2>Our Courses</h2>
+    <ul>
+      <li>SAT Math Preparation - Comprehensive course covering all SAT Math topics</li>
+      <li>EST Math Preparation - Specialized preparation for Egyptian Scholastic Test</li>
+      <li>Secondary School Mathematics - Thorough tutoring for high school math</li>
+    </ul>
+    <h2>Why Choose Wael Math Academy</h2>
+    <p>Experienced math tutor with proven track record. Personalized learning approach. Online and in-person sessions available.</p>
+  </div>
+  
+  <script>
+    window.addEventListener('flutter-first-frame', function() {
+      var el = document.getElementById('seo-content');
+      if(el) el.style.display = 'none';
+    });
+  </script>
+  
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

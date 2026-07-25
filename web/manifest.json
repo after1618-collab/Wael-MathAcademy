@@ -1,11 +1,11 @@
 {
-    "name": "wael_math",
-    "short_name": "wael_math",
+    "name": "Wael Math Academy",
+    "short_name": "Wael Math",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#6A11CB",
+    "theme_color": "#2575FC",
+    "description": "Expert SAT Math and EST Math tutoring by Wael. Join hundreds of successful students.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

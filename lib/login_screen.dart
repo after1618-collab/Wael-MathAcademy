@@ -89,16 +89,7 @@ class _LoginScreenState extends State<LoginScreen>
         await SessionManager().setToken(sessionToken);
 
         if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (_, __, ___) => const StudentDashboard(),
-              transitionsBuilder: (_, anim, __, child) {
-                return FadeTransition(opacity: anim, child: child);
-              },
-              transitionDuration: const Duration(milliseconds: 500),
-            ),
-          );
+          Navigator.pushReplacementNamed(context, '/dashboard');
         }
       } else {
         switch (response.statusCode) {

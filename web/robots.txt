@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /about
+Allow: /courses
+Disallow: /login
+Disallow: /dashboard
+Disallow: /lessons
+Disallow: /video
+
+Sitemap: https://wael-mathacademy.pages.dev/sitemap.xml
