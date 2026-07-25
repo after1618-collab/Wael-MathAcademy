@@ -21,7 +21,7 @@ class ApiService {
       final port = (uri.port == 80 || uri.port == 443 || uri.port == 0)
           ? ''
           : ':${uri.port}';
-      return '${uri.scheme}://${uri.host}$port';
+return 'https://wael-mathacademy.onrender.com';
     }
     // Mobile fallback — update this if you have a dedicated mobile API URL
     return 'https://wael-mathacademy.onrender.com';
