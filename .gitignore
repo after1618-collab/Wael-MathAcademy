@@ -1,3 +1,29 @@
 .env
 __pycache__/
 *.pyc
+# Flutter
+.dart_tool/
+build/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# Temp
+*.tmp
+
+# Dart
+.packages
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Generated
+all_code.txt

@@ -24,7 +24,7 @@ class ApiService {
       return '${uri.scheme}://${uri.host}$port';
     }
     // Mobile fallback — update this if you have a dedicated mobile API URL
-    return 'https://wael-mathacademy.up.railway.app';
+    return 'https://wael-mathacademy.onrender.com';
   }
 
   static const Duration _timeout = Duration(seconds: 15);

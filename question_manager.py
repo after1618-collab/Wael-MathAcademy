@@ -12,6 +12,19 @@ from dataclasses import dataclass
 from typing import List
 from io import BytesIO
 
+# تحميل .env أولاً
+script_dir = os.path.dirname(os.path.abspath(__file__))
+dotenv_path = os.path.join(script_dir, ".env")
+load_dotenv(dotenv_path)
+
+# بعد ذلك فقط استورد Provider
+from api.storage.provider import storage
+
+try:
+    from api.storage.provider import storage as storage_provider
+except Exception:
+    storage_provider = None
+
 try:
     from PIL import Image, ImageTk
     PIL_AVAILABLE = True
@@ -39,11 +52,6 @@ class AppConfig:
 
         if not self.supabase_url or not self.supabase_key:
             raise ValueError("Supabase credentials not found in .env")
-
-# --- INIT ---
-script_dir = os.path.dirname(os.path.abspath(__file__))
-dotenv_path = os.path.join(script_dir, ".env")
-load_dotenv(dotenv_path)
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -145,10 +153,14 @@ class QuestionManagerApp:
             try:
                 # 1. Fetch all data in the background
                 sections_resp = supabase.table("sections").select("*").execute()
-                buckets_resp = supabase.storage.list_buckets()
+                if storage_provider is not None:
+                    buckets_resp = storage_provider.list_buckets()
+                    buckets = list(buckets_resp)
+                else:
+                    buckets_resp = storage_provider.list_buckets()
+                    buckets = list(buckets_resp)
 
                 sections = [s["name"] for s in sections_resp.data]
-                buckets = [b.name for b in buckets_resp]
 
                 # 2. Schedule a single UI update on the main thread
                 def do_initial_setup():
@@ -182,8 +194,12 @@ class QuestionManagerApp:
 
     def load_buckets(self):
         # This function is now only for re-loading the list after an update (e.g., add)
-        resp = supabase.storage.list_buckets()
-        self.buckets = [b.name for b in resp]
+        if storage_provider is not None:
+            resp = storage_provider.list_buckets()
+            self.buckets = list(resp)
+        else:
+            resp = storage_provider.list_buckets()
+            self.buckets = list(resp)
         self.app.after(0, lambda: self.bucket_menu.configure(values=self.buckets))
 
     # === ADD ===
@@ -205,7 +221,11 @@ class QuestionManagerApp:
         if not name:
             return
         try:
-            supabase.storage.create_bucket(name)
+            if storage_provider is not None:
+                storage_provider.create_bucket(name)
+            else:
+                # Storage backend unavailable; bucket creation requires the configured provider.
+                raise RuntimeError("Storage provider not available; cannot create bucket.")
             self.load_buckets()
             self.selected_bucket.set(name)
         except Exception as e:
@@ -299,7 +319,12 @@ class QuestionManagerApp:
                 filename = os.path.basename(file_path)
                 storage_path = f"{section}/{filename}"
                 with open(file_path, "rb") as f:
-                    supabase.storage.from_(bucket).upload(storage_path, f, {"x-upsert": "true"})
+                    storage.upload_file(
+                        bucket=bucket,
+                        remote_path=storage_path,
+                        file=f,
+                        upsert=True,
+                    )
 
                 supabase.table("questions").insert({
                     "image_path": storage_path,
@@ -712,7 +737,10 @@ class QuestionManagerApp:
         def load_and_display():
             def download_action():
                 """Action to be retried: download and process the full image."""
-                img_data = supabase.storage.from_(bucket).download(path)
+                img_data = storage.download_file(
+                    bucket=bucket,
+                    remote_path=path,
+                )
                 img = Image.open(BytesIO(img_data))
 
                 screen_width = self.app.winfo_screenwidth() - 100
@@ -745,7 +773,10 @@ class QuestionManagerApp:
 
         def download_action():
             """Action to be retried: download and process the thumbnail."""
-            img_data = supabase.storage.from_(bucket).download(path)
+            img_data = storage.download_file(
+                bucket=bucket,
+                remote_path=path,
+            )
             img = Image.open(BytesIO(img_data))
             img.thumbnail((480, 480))
             return ctk.CTkImage(light_image=img, dark_image=img, size=(img.width, img.height))

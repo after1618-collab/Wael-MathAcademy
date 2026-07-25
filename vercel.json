@@ -2,35 +2,24 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "includeFiles": [
-          "mcp_server.py",
-          "google0e59f1440c6a05bd.html",
-          "sitemap.xml"
-        ]
-      }
-    },
-    {
       "src": "build/web/**/*",
       "use": "@vercel/static"
     }
   ],
   "routes": [
-    { "src": "/sessions/(.*)",  "dest": "/api/index.py" },
-    { "src": "/admin/(.*)",     "dest": "/api/index.py" },
-    { "src": "/student/(.*)",   "dest": "/api/index.py" },
-    { "src": "/questions(.*)",  "dest": "/api/index.py" },
-    { "src": "/attempts/(.*)",  "dest": "/api/index.py" },
-    { "src": "/sections/(.*)",  "dest": "/api/index.py" },
-    { "src": "/courses/(.*)",   "dest": "/api/index.py" },
-    { "src": "/lessons/(.*)",   "dest": "/api/index.py" },
-    { "src": "/video/(.*)",     "dest": "/api/index.py" },
-    { "src": "/reports/(.*)",   "dest": "/api/index.py" },
-    { "src": "/progress/(.*)",  "dest": "/api/index.py" },
-    { "src": "/sitemap.xml",    "dest": "/api/index.py" },
-    { "src": "/google(.*)",     "dest": "/api/index.py" },
+    { "src": "/sessions/(.*)",  "dest": "https://YOUR-RENDER-URL.onrender.com/sessions/$1" },
+    { "src": "/admin/(.*)",     "dest": "https://YOUR-RENDER-URL.onrender.com/admin/$1" },
+    { "src": "/student/(.*)",   "dest": "https://YOUR-RENDER-URL.onrender.com/student/$1" },
+    { "src": "/questions(.*)",  "dest": "https://YOUR-RENDER-URL.onrender.com/questions$1" },
+    { "src": "/attempts/(.*)",  "dest": "https://YOUR-RENDER-URL.onrender.com/attempts/$1" },
+    { "src": "/sections/(.*)",  "dest": "https://YOUR-RENDER-URL.onrender.com/sections/$1" },
+    { "src": "/courses/(.*)",   "dest": "https://YOUR-RENDER-URL.onrender.com/courses/$1" },
+    { "src": "/lessons/(.*)",   "dest": "https://YOUR-RENDER-URL.onrender.com/lessons/$1" },
+    { "src": "/video/(.*)",     "dest": "https://YOUR-RENDER-URL.onrender.com/video/$1" },
+    { "src": "/reports/(.*)",   "dest": "https://YOUR-RENDER-URL.onrender.com/reports/$1" },
+    { "src": "/progress/(.*)",  "dest": "https://YOUR-RENDER-URL.onrender.com/progress/$1" },
+    { "src": "/sitemap.xml",    "dest": "https://YOUR-RENDER-URL.onrender.com/sitemap.xml" },
+    { "src": "/google(.*)",     "dest": "https://YOUR-RENDER-URL.onrender.com/google$1" },
     { "src": "/",               "dest": "/build/web/index.html" },
     { "src": "/(.*)",           "dest": "/build/web/$1" }
   ]

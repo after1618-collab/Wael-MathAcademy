@@ -25,13 +25,13 @@ class StorageConfig:
 
 
 print("CONFIG SUPABASE_URL =", os.getenv("SUPABASE_URL"))
-print("CONFIG SUPABASE_KEY EXISTS =", bool(os.getenv("SUPABASE_KEY")))
+print("CONFIG SUPABASE_KEY EXISTS =", bool(os.getenv("SUPABASE_SERVICE_KEY")))
 
 config = StorageConfig(
     provider=os.getenv("STORAGE_PROVIDER", "supabase").lower(),
 
     supabase_url=os.getenv("SUPABASE_URL", ""),
-    supabase_key=os.getenv("SUPABASE_KEY", ""),
+    supabase_key=os.getenv("SUPABASE_SERVICE_KEY", ""),
     default_bucket=os.getenv("SUPABASE_BUCKET", ""),
 
     r2_endpoint=os.getenv("R2_ENDPOINT", ""),

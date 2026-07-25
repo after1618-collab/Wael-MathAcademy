@@ -246,42 +246,6 @@ class _QuestionScreenState extends State<QuestionScreen> with WidgetsBindingObse
       ),
     );
   }
-}
-
-class WatermarkPainter extends CustomPainter {
-  final String text;
-  WatermarkPainter(this.text);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final textStyle = TextStyle(
-      color: Colors.black.withOpacity(0.10),
-      fontSize: 15,
-      fontWeight: FontWeight.bold,
-    );
-    final textPainter = TextPainter(
-      text: TextSpan(text: text, style: textStyle),
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-
-    final double stepX = textPainter.width + 120;
-    final double stepY = textPainter.height + 180;
-
-    for (double x = -100; x < size.width + 100; x += stepX) {
-      for (double y = -100; y < size.height + 100; y += stepY) {
-        canvas.save();
-        canvas.translate(x, y);
-        canvas.rotate(-0.35);
-        textPainter.paint(canvas, Offset.zero);
-        canvas.restore();
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(WatermarkPainter oldDelegate) => oldDelegate.text != text;
-}
 
   Future<void> _submitAnswer(String questionId, String answer,
       Map<String, dynamic> question) async {
@@ -711,4 +675,39 @@ class WatermarkPainter extends CustomPainter {
       ),
     );
   }
+}
+
+class WatermarkPainter extends CustomPainter {
+  final String text;
+  WatermarkPainter(this.text);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final textStyle = TextStyle(
+      color: Colors.black.withOpacity(0.10),
+      fontSize: 15,
+      fontWeight: FontWeight.bold,
+    );
+    final textPainter = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+
+    final double stepX = textPainter.width + 120;
+    final double stepY = textPainter.height + 180;
+
+    for (double x = -100; x < size.width + 100; x += stepX) {
+      for (double y = -100; y < size.height + 100; y += stepY) {
+        canvas.save();
+        canvas.translate(x, y);
+        canvas.rotate(-0.35);
+        textPainter.paint(canvas, Offset.zero);
+        canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(WatermarkPainter oldDelegate) => oldDelegate.text != text;
 }
