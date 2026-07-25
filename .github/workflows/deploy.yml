@@ -21,6 +21,9 @@ jobs:
       - name: Build Web
         run: flutter build web --release
 
+      - name: Copy verification file
+        run: cp web/google*.html build/web/ 2>/dev/null || true
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
