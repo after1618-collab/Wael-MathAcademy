@@ -41,11 +41,13 @@ class R2Storage(IStorageProvider):
         if content_type:
             extra["ContentType"] = content_type
 
-        self.client.upload_fileobj(
-            Fileobj=file,
+        # Use put_object instead of upload_fileobj for better control over
+        # content type and to avoid multipart upload overhead for small files.
+        self.client.put_object(
             Bucket=config.r2_bucket,
             Key=remote_path,
-            ExtraArgs=extra,
+            Body=file,
+            ContentType=content_type or "application/octet-stream",
         )
 
         return True

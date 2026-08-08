@@ -223,9 +223,14 @@ class VideoManagerApp:
         self.lessons_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
         # Register drag-and-drop on the main window after widgets are ready
-        if HAS_DND:
-            self.app.after(100, self._setup_drag_drop)
+        print("REACHED SETUP_UI")
+        print("HAS_DND =", HAS_DND)
 
+        if HAS_DND:
+            print("SCHEDULING DND")
+            self.app.after(100, self._setup_drag_drop)
+        else:
+            print("DND DISABLED")
     def setup_bottom_bar(self):
         bottom = ctk.CTkFrame(self.app)
         bottom.pack(pady=5, fill="x", padx=10)
@@ -1483,8 +1488,12 @@ class VideoManagerApp:
         if not HAS_DND:
             return
         try:
+            # Log whether DND is available
+            print("HAS_DND =", HAS_DND)
             self.app.drop_target_register(DND_FILES)
+            print("DROP TARGET REGISTERED")
             self.app.dnd_bind('<<Drop>>', self._handle_drop)
+            print("DROP EVENT BINDED")
             logging.info("✅ Drag-and-drop enabled.")
         except Exception as e:
             logging.warning(f"Drag-and-drop registration failed: {e}")
@@ -1494,6 +1503,9 @@ class VideoManagerApp:
         Called when the user drops files onto the window.
         Filters video files and triggers the upload flow.
         """
+        # Debug prints for drop event
+        print("DROP EVENT RECEIVED")
+        print("DATA =", repr(event.data))
         if not HAS_DND:
             return
 

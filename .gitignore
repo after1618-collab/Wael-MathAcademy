@@ -27,3 +27,4 @@ __pycache__/
 
 # Generated
 all_code.txt
+.aider*
