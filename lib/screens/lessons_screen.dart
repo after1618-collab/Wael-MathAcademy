@@ -7,11 +7,13 @@ import 'video_player_screen.dart';
 class LessonsScreen extends StatefulWidget {
   final String courseId;
   final String courseTitle;
+  final String? courseThumbnailUrl;
 
   const LessonsScreen({
     super.key,
     required this.courseId,
     required this.courseTitle,
+    this.courseThumbnailUrl,
   });
 
   @override
@@ -22,6 +24,7 @@ class _LessonsScreenState extends State<LessonsScreen> {
   List<Map<String, dynamic>> lessons = [];
   bool isLoading = true;
   String? error;
+  bool _isGridView = false;
 
   @override
   void initState() {
@@ -70,6 +73,16 @@ class _LessonsScreenState extends State<LessonsScreen> {
             pinned: true,
             stretch: true,
             backgroundColor: const Color(0xFF2575FC),
+            actions: [
+              IconButton(
+                tooltip: _isGridView ? 'List view' : 'Thumbnail view',
+                icon: Icon(_isGridView
+                    ? Icons.view_list_rounded
+                    : Icons.grid_view_rounded),
+                onPressed: () => setState(() => _isGridView = !_isGridView),
+              ),
+              const SizedBox(width: 8),
+            ],
             leading: IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),
@@ -93,6 +106,20 @@ class _LessonsScreenState extends State<LessonsScreen> {
                 ),
                 child: Stack(
                   children: [
+                    if (widget.courseThumbnailUrl != null &&
+                        widget.courseThumbnailUrl!.isNotEmpty)
+                      Positioned.fill(
+                        child: Image.network(
+                          widget.courseThumbnailUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withOpacity(0.48),
+                      ),
+                    ),
                     Positioned(
                       right: -30,
                       top: -30,
@@ -277,15 +304,89 @@ class _LessonsScreenState extends State<LessonsScreen> {
       );
     }
 
-    // Lessons List
+    // Lessons List / thumbnail grid
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
-      child: Column(
-        children: List.generate(lessons.length, (index) {
-          return _buildLessonTile(lessons[index], index);
-        }),
-      ),
+      child: _isGridView
+          ? GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 300,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                childAspectRatio: 0.88,
+              ),
+              itemCount: lessons.length,
+              itemBuilder: (context, index) =>
+                  _buildLessonGridCard(lessons[index], index),
+            )
+          : Column(
+              children: List.generate(lessons.length, (index) {
+                return _buildLessonTile(lessons[index], index);
+              }),
+            ),
     );
+  }
+
+  Widget _buildLessonGridCard(Map<String, dynamic> lesson, int index) {
+    final watched = lesson['watched'] ?? false;
+    final videoType = lesson['video_type'] ?? 'youtube';
+    String? thumbnailUrl;
+    if (videoType == 'youtube') {
+      thumbnailUrl = VideoService.getYoutubeThumbnail(lesson['video_url'] ?? '');
+    }
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => VideoPlayerScreen(lesson: lesson),
+            ),
+          ).then((_) => _loadLessons());
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SizedBox(
+                width: double.infinity,
+                child: _buildThumbnail(thumbnailUrl, videoType, watched,
+                    width: double.infinity, height: double.infinity),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      lesson['title'] ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: watched ? Colors.grey[500] : const Color(0xFF1A1A2E),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(Icons.play_circle_fill_rounded,
+                      color: watched ? Colors.green : const Color(0xFF2575FC),
+                      size: 22),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: Duration(milliseconds: 100 + (index * 80)));
   }
 
   Widget _buildLessonTile(Map<String, dynamic> lesson, int index) {
@@ -485,7 +586,8 @@ class _LessonsScreenState extends State<LessonsScreen> {
     );
   }
 
-  Widget _buildThumbnail(String? url, String videoType, bool watched) {
+  Widget _buildThumbnail(String? url, String videoType, bool watched,
+      {double width = 85, double height = 55}) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Stack(
@@ -493,13 +595,13 @@ class _LessonsScreenState extends State<LessonsScreen> {
           if (url != null)
             Image.network(
               url,
-              width: 85,
-              height: 55,
+              width: width,
+              height: height,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => _placeholderThumb(videoType),
             )
           else
-            _placeholderThumb(videoType),
+            _placeholderThumb(videoType, width: width, height: height),
           // Overlay on watched
           if (watched)
             Positioned.fill(
@@ -519,10 +621,11 @@ class _LessonsScreenState extends State<LessonsScreen> {
     );
   }
 
-  Widget _placeholderThumb(String type) {
+  Widget _placeholderThumb(String type,
+      {double width = 85, double height = 55}) {
     return Container(
-      width: 85,
-      height: 55,
+      width: width,
+      height: height,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],

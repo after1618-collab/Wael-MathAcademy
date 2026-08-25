@@ -316,6 +316,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 builder: (_) => LessonsScreen(
                   courseId: course['id'],
                   courseTitle: course['title'] ?? 'Course',
+                  courseThumbnailUrl: course['thumbnail_url'],
                 ),
               ),
             ).then((_) => _loadCourses());
