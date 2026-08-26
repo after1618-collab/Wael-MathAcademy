@@ -16,6 +16,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
   List<Map<String, dynamic>> courses = [];
   bool isLoading = true;
   String? error;
+  bool _isGridView = false;
 
   @override
   void initState() {
@@ -66,6 +67,16 @@ class _CoursesScreenState extends State<CoursesScreen> {
             pinned: true,
             stretch: true,
             backgroundColor: const Color(0xFF8B5CF6),
+            actions: [
+              IconButton(
+                tooltip: _isGridView ? 'List view' : 'Thumbnail view',
+                icon: Icon(_isGridView
+                    ? Icons.view_list_rounded
+                    : Icons.grid_view_rounded),
+                onPressed: () => setState(() => _isGridView = !_isGridView),
+              ),
+              const SizedBox(width: 8),
+            ],
             leading: IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),
@@ -277,13 +288,119 @@ class _CoursesScreenState extends State<CoursesScreen> {
       color: const Color(0xFF8B5CF6),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
-        child: Column(
-          children: List.generate(courses.length, (index) {
-            return _buildCourseCard(courses[index], index);
-          }),
-        ),
+        child: _isGridView
+            ? GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 320,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 0.86,
+                ),
+                itemCount: courses.length,
+                itemBuilder: (context, index) =>
+                    _buildCourseGridCard(courses[index], index),
+              )
+            : Column(
+                children: List.generate(courses.length, (index) {
+                  return _buildCourseCard(courses[index], index);
+                }),
+              ),
       ),
     );
+  }
+
+  Widget _buildCourseGridCard(Map<String, dynamic> course, int index) {
+    final progress = (course['progress_percentage'] ?? 0) as int;
+    final totalLessons = course['total_lessons'] ?? 0;
+    final watchedLessons = course['watched_lessons'] ?? 0;
+    final isCompleted = progress == 100;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LessonsScreen(
+                courseId: course['id'],
+                courseTitle: course['title'] ?? 'Course',
+                courseThumbnailUrl: course['thumbnail_url'],
+              ),
+            ),
+          ).then((_) => _loadCourses());
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SizedBox(
+                width: double.infinity,
+                child: course['thumbnail_url'] != null &&
+                        course['thumbnail_url'].toString().isNotEmpty
+                    ? Image.network(
+                        course['thumbnail_url'],
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _defaultThumbnail(),
+                      )
+                    : _defaultThumbnail(),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    course['title'] ?? '',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A1A2E),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.play_circle_outline_rounded,
+                          size: 14,
+                          color: isCompleted
+                              ? Colors.green
+                              : const Color(0xFF8B5CF6)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$watchedLessons/$totalLessons lessons',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '$progress%',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isCompleted
+                              ? Colors.green
+                              : const Color(0xFF8B5CF6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: Duration(milliseconds: 100 + (index * 100)));
   }
 
   Widget _buildCourseCard(Map<String, dynamic> course, int index) {
