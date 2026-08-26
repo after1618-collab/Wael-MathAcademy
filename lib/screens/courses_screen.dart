@@ -16,7 +16,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
   List<Map<String, dynamic>> courses = [];
   bool isLoading = true;
   String? error;
-  bool _isGridView = false;
+  bool _isGridView = true;
 
   @override
   void initState() {
