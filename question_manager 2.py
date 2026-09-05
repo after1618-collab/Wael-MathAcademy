@@ -46,6 +46,9 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 dotenv_path = os.path.join(script_dir, ".env")
 load_dotenv(dotenv_path)
 
+# Use the configured storage provider (Cloudflare R2 or Supabase).
+from api.storage.provider import storage
+
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -89,13 +92,14 @@ class QuestionManagerApp:
     @staticmethod
     def extract_answer_from_filename(filename):
         """Extract a standalone single letter (A-E) from the filename as the correct answer.
-        Examples: '1_B.png' -> 'B', 'Q5-c.jpg' -> 'C', 'A.png' -> 'A'
+        Examples: '1_B.png' -> 'B', 'rate bbbbbb_30.png' -> 'B', 'Q5-c.jpg' -> 'C'
         """
         name = os.path.splitext(os.path.basename(filename))[0]
-        # Find standalone letters A-E (not part of a longer word)
-        matches = re.findall(r'(?<![a-zA-Z])([A-Ea-e])(?![a-zA-Z])', name)
+        # Accept a letter repeated one or more times, such as "b" or "bbbbbb".
+        letter_groups = re.findall(r'(?<![a-zA-Z])([A-Ea-e]+)(?![a-zA-Z])', name)
+        matches = [group[0].upper() for group in letter_groups if len(set(group.lower())) == 1]
         if matches:
-            return matches[-1].upper()
+            return matches[-1]
         return "A"  # Default if no standalone letter found
 
     # === UI ===
@@ -155,10 +159,9 @@ class QuestionManagerApp:
         def worker():
             try:
                 sections_resp = supabase.table("sections").select("*").execute()
-                buckets_resp = supabase.storage.list_buckets()
-
+                buckets_resp = storage.list_buckets()
                 sections = [s["name"] for s in sections_resp.data]
-                buckets = [b.name for b in buckets_resp]
+                buckets = list(buckets_resp)
 
                 def do_initial_setup():
                     self.sections = sections
@@ -182,8 +185,8 @@ class QuestionManagerApp:
         self.app.after(0, lambda: self.section_menu.configure(values=self.sections))
 
     def load_buckets(self):
-        resp = supabase.storage.list_buckets()
-        self.buckets = [b.name for b in resp]
+        resp = storage.list_buckets()
+        self.buckets = list(resp)
         self.app.after(0, lambda: self.bucket_menu.configure(values=self.buckets))
 
     # === ADD ===
@@ -205,7 +208,7 @@ class QuestionManagerApp:
         if not name:
             return
         try:
-            supabase.storage.create_bucket(name)
+            storage.create_bucket(name)
             self.load_buckets()
             self.selected_bucket.set(name)
         except Exception as e:
@@ -295,7 +298,12 @@ class QuestionManagerApp:
                 filename = os.path.basename(file_path)
                 storage_path = f"{section}/{filename}"
                 with open(file_path, "rb") as f:
-                    supabase.storage.from_(bucket).upload(storage_path, f, {"x-upsert": "true"})
+                    storage.upload_file(
+                        bucket=bucket,
+                        remote_path=storage_path,
+                        file=f,
+                        upsert=True,
+                    )
 
                 # ✅ CHANGED: extract answer from filename instead of hardcoded "A"
                 extracted_answer = self.extract_answer_from_filename(filename)
@@ -773,7 +781,7 @@ class QuestionManagerApp:
 
         def load_and_display():
             def download_action():
-                img_data = supabase.storage.from_(bucket).download(path)
+                img_data = storage.download_file(bucket=bucket, remote_path=path)
                 img = Image.open(BytesIO(img_data))
 
                 screen_width = self.app.winfo_screenwidth() - 100
@@ -805,7 +813,7 @@ class QuestionManagerApp:
             return
 
         def download_action():
-            img_data = supabase.storage.from_(bucket).download(path)
+            img_data = storage.download_file(bucket=bucket, remote_path=path)
             img = Image.open(BytesIO(img_data))
             img.thumbnail((80, 80))  # ✅ CHANGED from (480, 480)
             return ctk.CTkImage(light_image=img, dark_image=img, size=(img.width, img.height))
